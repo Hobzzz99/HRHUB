@@ -1,0 +1,256 @@
+[
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/jane-okafor-demo",
+    "source_id": "jane-okafor",
+    "name": "Jane Okafor",
+    "headline": "Senior Backend Engineer | Python · FastAPI · AWS",
+    "current_title": "Senior Backend Engineer",
+    "current_company": "Acme Cloud",
+    "location": "Berlin, Germany",
+    "about": "Backend engineer focused on high-throughput Python services and cloud infrastructure.",
+    "experience": [
+      {"title": "Senior Backend Engineer", "company": "Acme Cloud", "start": "2021-03", "end": "Present"},
+      {"title": "Backend Engineer", "company": "Globex", "start": "2018-01", "end": "2021-03"}
+    ],
+    "education": [{"school": "TU Berlin", "degree": "BSc", "field": "Computer Science"}],
+    "skills": ["Python", "FastAPI", "Docker", "AWS", "PostgreSQL", "Kubernetes", "Redis"],
+    "certifications": [{"name": "AWS Certified Solutions Architect"}],
+    "licenses": [],
+    "languages": ["English", "German"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=jane-okafor"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/priya-nair-demo",
+    "source_id": "priya-nair",
+    "name": "Priya Nair",
+    "headline": "Backend Engineer at FinStack",
+    "current_title": "Backend Engineer",
+    "current_company": "FinStack",
+    "location": "Bengaluru, India",
+    "about": "API and data-platform engineer. FastAPI, Postgres, event-driven systems.",
+    "experience": [
+      {"title": "Backend Engineer", "company": "FinStack", "start": "2020-06", "end": "Present"},
+      {"title": "Software Engineer", "company": "Infosys", "start": "2018-07", "end": "2020-06"}
+    ],
+    "education": [{"school": "NIT Trichy", "degree": "BTech", "field": "Information Technology"}],
+    "skills": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "RabbitMQ"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "Hindi", "Malayalam"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=priya-nair"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/marco-rossi-demo",
+    "source_id": "marco-rossi",
+    "name": "Marco Rossi",
+    "headline": "Backend Engineer · Python · Django",
+    "current_title": "Backend Engineer",
+    "current_company": "Nimbus",
+    "location": "Remote",
+    "about": "Pragmatic backend developer. Django and FastAPI, containerized on AWS.",
+    "experience": [
+      {"title": "Backend Engineer", "company": "Nimbus", "start": "2020-01", "end": "Present"},
+      {"title": "Web Developer", "company": "Studio7", "start": "2016-09", "end": "2019-12"}
+    ],
+    "education": [{"school": "Politecnico di Milano", "degree": "MSc", "field": "Software Engineering"}],
+    "skills": ["Python", "Django", "FastAPI", "Docker", "AWS", "MySQL"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "Italian"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=marco-rossi"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/david-nguyen-demo",
+    "source_id": "david-nguyen",
+    "name": "David Nguyen",
+    "headline": "Backend Engineer | FastAPI + GCP",
+    "current_title": "Backend Engineer",
+    "current_company": "Bloomlytics",
+    "location": "Remote",
+    "about": "Building Python microservices. Fast, tested, observable.",
+    "experience": [
+      {"title": "Backend Engineer", "company": "Bloomlytics", "start": "2022-02", "end": "Present"},
+      {"title": "Junior Developer", "company": "Bloomlytics", "start": "2021-01", "end": "2022-02"}
+    ],
+    "education": [{"school": "RMIT", "degree": "BSc", "field": "Computer Science"}],
+    "skills": ["Python", "FastAPI", "Docker", "AWS", "GCP", "PostgreSQL"],
+    "certifications": [{"name": "Google Associate Cloud Engineer"}],
+    "licenses": [],
+    "languages": ["English", "Vietnamese"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=david-nguyen"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/sofia-martinez-demo",
+    "source_id": "sofia-martinez",
+    "name": "Sofia Martinez",
+    "headline": "DevOps / Platform Engineer",
+    "current_title": "Senior DevOps Engineer",
+    "current_company": "Cloudforge",
+    "location": "Madrid, Spain",
+    "about": "Platform and reliability engineering. Kubernetes, Terraform, and Python tooling.",
+    "experience": [
+      {"title": "Senior DevOps Engineer", "company": "Cloudforge", "start": "2019-05", "end": "Present"},
+      {"title": "Systems Engineer", "company": "Telco Iberia", "start": "2015-03", "end": "2019-05"},
+      {"title": "IT Analyst", "company": "BankOne", "start": "2013-01", "end": "2015-02"}
+    ],
+    "education": [{"school": "UPM Madrid", "degree": "BEng", "field": "Telecommunications"}],
+    "skills": ["AWS", "Kubernetes", "Terraform", "Docker", "Python", "Linux"],
+    "certifications": [{"name": "CKA: Certified Kubernetes Administrator"}],
+    "licenses": [],
+    "languages": ["English", "Spanish"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=sofia-martinez"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/grace-kim-demo",
+    "source_id": "grace-kim",
+    "name": "Grace Kim",
+    "headline": "Staff Software Engineer",
+    "current_title": "Staff Software Engineer",
+    "current_company": "Hyperscale",
+    "location": "San Francisco, CA",
+    "about": "Distributed systems at scale. Go and Python, gRPC, Kubernetes.",
+    "experience": [
+      {"title": "Staff Software Engineer", "company": "Hyperscale", "start": "2018-08", "end": "Present"},
+      {"title": "Senior Software Engineer", "company": "Streamly", "start": "2014-06", "end": "2018-08"},
+      {"title": "Software Engineer", "company": "Streamly", "start": "2012-05", "end": "2014-06"}
+    ],
+    "education": [{"school": "UC Berkeley", "degree": "BSc", "field": "EECS"}],
+    "skills": ["Go", "Python", "gRPC", "AWS", "Kubernetes", "PostgreSQL"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "Korean"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=grace-kim"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/ahmed-hassan-demo",
+    "source_id": "ahmed-hassan",
+    "name": "Ahmed Hassan",
+    "headline": "Backend Developer · Node.js",
+    "current_title": "Backend Developer",
+    "current_company": "SoukPay",
+    "location": "Cairo, Egypt",
+    "about": "Node.js backend developer building payment APIs.",
+    "experience": [
+      {"title": "Backend Developer", "company": "SoukPay", "start": "2020-10", "end": "Present"},
+      {"title": "Full Stack Developer", "company": "Webly", "start": "2018-02", "end": "2020-10"}
+    ],
+    "education": [{"school": "Cairo University", "degree": "BSc", "field": "Computer Engineering"}],
+    "skills": ["Node.js", "Express", "MongoDB", "AWS", "Docker", "JavaScript"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "Arabic"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=ahmed-hassan"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/aisha-khan-demo",
+    "source_id": "aisha-khan",
+    "name": "Aisha Khan",
+    "headline": "Full Stack Developer",
+    "current_title": "Full Stack Developer",
+    "current_company": "Brightside",
+    "location": "London, UK",
+    "about": "React on the front, Python and Node on the back.",
+    "experience": [
+      {"title": "Full Stack Developer", "company": "Brightside", "start": "2021-01", "end": "Present"},
+      {"title": "Frontend Developer", "company": "Pixelworks", "start": "2019-06", "end": "2021-01"}
+    ],
+    "education": [{"school": "Imperial College London", "degree": "BEng", "field": "Computing"}],
+    "skills": ["JavaScript", "React", "Node.js", "Python", "AWS", "TypeScript"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "Urdu"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=aisha-khan"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/chen-wei-demo",
+    "source_id": "chen-wei",
+    "name": "Chen Wei",
+    "headline": "Software Engineer · Java / Spring",
+    "current_title": "Software Engineer",
+    "current_company": "Orient Systems",
+    "location": "Tokyo, Japan",
+    "about": "JVM backend engineer. Spring Boot, Kafka, Kubernetes.",
+    "experience": [
+      {"title": "Software Engineer", "company": "Orient Systems", "start": "2019-04", "end": "Present"},
+      {"title": "Software Engineer", "company": "NipponSoft", "start": "2016-04", "end": "2019-04"}
+    ],
+    "education": [{"school": "University of Tokyo", "degree": "MSc", "field": "Information Science"}],
+    "skills": ["Java", "Spring", "Kafka", "Kubernetes", "AWS", "MySQL"],
+    "certifications": [{"name": "Oracle Certified Professional, Java SE"}],
+    "licenses": [],
+    "languages": ["English", "Japanese", "Mandarin"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=chen-wei"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/liam-obrien-demo",
+    "source_id": "liam-obrien",
+    "name": "Liam O'Brien",
+    "headline": "Junior Backend Developer",
+    "current_title": "Junior Backend Developer",
+    "current_company": "Shamrock Labs",
+    "location": "Dublin, Ireland",
+    "about": "Early-career Python developer. Flask, Docker, learning fast.",
+    "experience": [
+      {"title": "Junior Backend Developer", "company": "Shamrock Labs", "start": "2024-01", "end": "Present"},
+      {"title": "Intern", "company": "Shamrock Labs", "start": "2023-06", "end": "2023-12"}
+    ],
+    "education": [{"school": "Trinity College Dublin", "degree": "BSc", "field": "Computer Science"}],
+    "skills": ["Python", "Flask", "Docker", "SQLite"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=liam-obrien"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/elena-petrova-demo",
+    "source_id": "elena-petrova",
+    "name": "Elena Petrova",
+    "headline": "Data Engineer · Python · Spark",
+    "current_title": "Data Engineer",
+    "current_company": "DataNest",
+    "location": "Amsterdam, Netherlands",
+    "about": "Batch and streaming data pipelines on AWS.",
+    "experience": [
+      {"title": "Data Engineer", "company": "DataNest", "start": "2019-09", "end": "Present"},
+      {"title": "Analytics Engineer", "company": "Metricly", "start": "2016-09", "end": "2019-09"}
+    ],
+    "education": [{"school": "University of Amsterdam", "degree": "MSc", "field": "Data Science"}],
+    "skills": ["Python", "Spark", "Airflow", "AWS", "PostgreSQL", "Docker"],
+    "certifications": [{"name": "AWS Certified Data Analytics"}],
+    "licenses": [],
+    "languages": ["English", "Russian", "Dutch"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=elena-petrova"
+  },
+  {
+    "source": "mock",
+    "source_profile_url": "https://www.linkedin.com/in/tom-becker-demo",
+    "source_id": "tom-becker",
+    "name": "Tom Becker",
+    "headline": "Frontend Engineer · React",
+    "current_title": "Frontend Engineer",
+    "current_company": "Acme Cloud",
+    "location": "Berlin, Germany",
+    "about": "Frontend engineer. React, TypeScript, design systems.",
+    "experience": [
+      {"title": "Frontend Engineer", "company": "Acme Cloud", "start": "2021-06", "end": "Present"},
+      {"title": "UI Developer", "company": "Designify", "start": "2019-02", "end": "2021-06"}
+    ],
+    "education": [{"school": "HTW Berlin", "degree": "BSc", "field": "Media Informatics"}],
+    "skills": ["JavaScript", "TypeScript", "React", "CSS", "Next.js"],
+    "certifications": [],
+    "licenses": [],
+    "languages": ["English", "German"],
+    "profile_picture_url": "https://i.pravatar.cc/300?u=tom-becker"
+  }
+]

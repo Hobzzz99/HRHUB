@@ -1,0 +1,22 @@
+# --- Celery worker image (includes Chromium for the Playwright provider) ---
+# The official Playwright Python image ships the browser binaries + OS deps,
+# so the worker can run the (opt-in) scraping provider without extra setup.
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY backend/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+
+COPY backend/ ./
+
+# Celery must not run as root inside the Playwright image's browser sandbox.
+USER pwuser
+
+# concurrency=2 keeps one browser context per task (see browser_pool.py).
+CMD ["celery", "-A", "app.workers.celery_app.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=2"]

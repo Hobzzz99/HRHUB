@@ -1,0 +1,25 @@
+# --- FastAPI service image ---
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# System deps for psycopg + healthcheck tooling
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps first for better layer caching
+COPY backend/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+
+# App source
+COPY backend/ ./
+COPY infra/entrypoint.api.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]
