@@ -26,7 +26,7 @@ const schema = z.object({
   max_results: z.coerce.number().min(1).max(200),
   min_match_score: z.coerce.number().min(0).max(100),
   enforce_location: z.boolean(),
-  provider: z.enum(["mock", "apify"]),
+  provider: z.enum(["mock", "linkedin"]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -91,7 +91,7 @@ export function SearchForm() {
       <form onSubmit={onSubmit} className="space-y-5">
           <Field
             label="Data source"
-            hint="Apify buys real LinkedIn profiles via its API — no LinkedIn account and no ban risk. Demo data runs on fixtures, no network."
+            hint="LinkedIn opens a real browser window on the server — sign in and clear any CAPTCHA yourself. Capped at 20 profiles per hour. Demo data runs on fixtures, no network."
           >
             <Controller
               control={control}
@@ -101,7 +101,7 @@ export function SearchForm() {
                   {(
                     [
                       { value: "mock", label: "Demo data", sub: "safe, instant" },
-                      { value: "apify", label: "Apify", sub: "LinkedIn via API" },
+                      { value: "linkedin", label: "LinkedIn", sub: "manual sign-in, 20/hr" },
                     ] as const
                   ).map((opt) => (
                     <button

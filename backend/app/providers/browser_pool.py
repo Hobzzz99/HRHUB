@@ -7,7 +7,11 @@ Each provider instance therefore owns a fresh `BrowserPool`, launches Chromium
 within the search's loop, and closes it in `aclose()`. Re-login is avoided via the
 persisted, encrypted `storageState` (not by reusing the browser process).
 
-This module is only imported when `PROVIDER=playwright`.
+Contexts are built by `app.providers.fingerprint`, which keeps the UA, client
+hints, `navigator`, WebGL and timezone telling one consistent story and installs
+the stealth init script before any page script runs.
+
+This module is only imported when `PROVIDER=linkedin`.
 """
 
 from __future__ import annotations
@@ -19,17 +23,34 @@ from playwright.async_api import Browser, BrowserContext, async_playwright
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.providers import fingerprint
 
 logger = get_logger(__name__)
 
 
 class BrowserPool:
-    """Process-wide singleton wrapping one Chromium instance."""
+    """Owns one Chromium instance for the lifetime of a single search.
 
-    def __init__(self) -> None:
+    ``fingerprint_seed`` pins which machine this browser presents. Pass the
+    provider-account row id so each connected account keeps one stable identity
+    and two accounts never share hardware — see `fingerprint.derive_profile`.
+    """
+
+    def __init__(self, *, fingerprint_seed: str | None = None) -> None:
         self._playwright = None
         self._browser: Browser | None = None
         self._lock = asyncio.Lock()
+        self._seed = fingerprint_seed
+
+    def _profile(self) -> fingerprint.FingerprintProfile:
+        """This pool's machine, re-pinned to the engine that is actually running.
+
+        Derivation is pure, so calling it before and after launch yields the
+        same machine; only the Chrome version differs, and that is taken from
+        the live binary rather than guessed.
+        """
+        version = self._browser.version if self._browser else None
+        return fingerprint.derive_profile(self._seed).with_engine_version(version)
 
     async def start(self) -> None:
         async with self._lock:
@@ -45,13 +66,17 @@ class BrowserPool:
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=settings.scrape_headless,
-                args=[
-                    "--no-sandbox",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-features=IsolateOrigins,site-per-process",
-                    "--start-maximized",
-                ],
+                args=fingerprint.launch_args(
+                    headless=settings.scrape_headless, profile=self._profile()
+                ),
+                # Drops Playwright's own --enable-automation switch, which sets
+                # navigator.webdriver and shows the automation infobar.
+                ignore_default_args=fingerprint.IGNORE_DEFAULT_ARGS,
+                # A person is going to sign in and clear CAPTCHAs in this window;
+                # don't let Playwright's default 30s budget close it underneath them.
+                timeout=120_000,
             )
+            logger.info("browser_fingerprint", profile=fingerprint.describe(self._profile()))
 
     async def _ensure_browser(self) -> Browser:
         if not self._browser or not self._browser.is_connected():
@@ -60,17 +85,24 @@ class BrowserPool:
         return self._browser
 
     async def new_context(self, storage_state: dict | None = None) -> BrowserContext:
-        """Create an isolated context (one per task), optionally restoring a session."""
+        """Create a fingerprint-consistent context, optionally restoring a session."""
         browser = await self._ensure_browser()
-        return await browser.new_context(
+        locale = settings.scrape_locale
+        profile = self._profile()
+        context = await browser.new_context(
             storage_state=storage_state,
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            **fingerprint.context_options(
+                profile=profile,
+                timezone_id=settings.scrape_timezone or None,
+                locale=locale,
             ),
-            viewport={"width": 1366, "height": 768},
-            locale="en-US",
         )
+        # Must be added before any navigation so it wins the race with page
+        # scripts that fingerprint on load.
+        await context.add_init_script(
+            fingerprint.stealth_script(profile=profile, locale=locale)
+        )
+        return context
 
     async def close(self) -> None:
         async with self._lock:

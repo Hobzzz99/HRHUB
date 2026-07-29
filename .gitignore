@@ -56,3 +56,10 @@ storage-state/
 
 # Scraper debug screenshots
 backend/_debug/
+
+# Rolling scrape-rate-limit window (machine-local; committing it would hand
+# another checkout a stale budget).
+backend/_state/
+
+# Next.js incremental build cache (regenerates on every build)
+frontend/tsconfig.tsbuildinfo

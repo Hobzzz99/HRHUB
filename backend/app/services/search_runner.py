@@ -22,6 +22,7 @@ from app.domain.prefilter import passes_prefilter
 from app.domain.scoring import score_candidate
 from app.providers.base import CandidateProvider, ProviderError
 from app.providers.factory import get_provider
+from app.providers.rate_limit import RateLimitExceeded
 from app.services import candidate_service, provider_account_service, search_service
 from app.db.session import SessionLocal, session_scope
 
@@ -63,26 +64,50 @@ async def execute_search(search_id: uuid.UUID) -> None:
 
 
 def _build_provider(db: Session, search: Search) -> CandidateProvider:
-    """Build the provider, loading encrypted credentials/session for scraping."""
+    """Build the provider, restoring the encrypted browser session for scraping."""
     if search.provider not in ("playwright", "linkedin"):
         return get_provider(search.provider)
 
-    account = provider_account_service.get_account(db, str(search.user_id), "linkedin")
-    credentials = provider_account_service.decrypt_credentials(account)
+    # Created on demand: sign-in is manual, so nothing else would ever create
+    # the row, and without it every search would demand a fresh login.
+    account = provider_account_service.get_or_create_account(
+        db, str(search.user_id), "linkedin"
+    )
     session_state = provider_account_service.load_session_state(account)
+    account_id = account.id
 
     async def on_session_update(state: dict) -> None:
-        if account is None:
-            return
         with session_scope() as s:
-            provider_account_service.save_session_state(s, account.id, state)
+            provider_account_service.save_session_state(s, account_id, state)
 
     return get_provider(
-        "playwright",
-        credentials=credentials,
+        "linkedin",
         session_state=session_state,
-        on_session_update=on_session_update if account else None,
+        on_session_update=on_session_update,
+        # The account row's id seeds the browser fingerprint, so this account
+        # keeps one machine identity for its whole life and a different account
+        # gets different hardware. Deleting the row to switch accounts therefore
+        # rotates the fingerprint too, which is exactly what you want when the
+        # previous account was restricted.
+        fingerprint_seed=str(account_id),
     )
+
+
+def _budget_progress(provider: CandidateProvider) -> dict:
+    """Remaining hourly scrape budget, for providers that have one.
+
+    Reported up front so a search that is about to stall on the rate limit says
+    so before it starts, rather than looking hung.
+    """
+    budget = getattr(provider, "budget", None)
+    if budget is None:
+        return {}
+    snapshot = budget()
+    return {
+        "budget_used": snapshot.used,
+        "budget_limit": snapshot.limit,
+        "budget_remaining": snapshot.remaining,
+    }
 
 
 async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -> None:
@@ -101,7 +126,13 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
         fetch_limit = min(search.max_results, settings.scrape_max_profiles)
         to_process = survivors[:fetch_limit]
         _set_progress(
-            db, search, found=len(hits), to_process=len(to_process), processed=0, kept=0
+            db,
+            search,
+            found=len(hits),
+            to_process=len(to_process),
+            processed=0,
+            kept=0,
+            **_budget_progress(provider),
         )
 
         processed = 0
@@ -126,6 +157,22 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
                 decision = apply_filters(profile, scored, criteria)
                 if decision.keep:
                     kept.append((candidate.id, scored))
+            except RateLimitExceeded as exc:
+                # The hourly scrape budget is spent. Stop cleanly and keep what
+                # we already have — a partial result set is far more useful than
+                # a failed search, and the recruiter can re-run it later to pick
+                # up where this left off (cached profiles are not re-fetched).
+                logger.info("search_stopped_at_rate_limit", search_id=str(search.id))
+                _set_progress(
+                    db,
+                    search,
+                    processed=processed - 1,
+                    kept=len(kept),
+                    rate_limited=True,
+                    retry_after_s=int(exc.retry_after_s),
+                    note=str(exc),
+                )
+                break
             except ProviderError as exc:
                 logger.warning(
                     "profile_skipped", url=hit.source_profile_url, error=str(exc)

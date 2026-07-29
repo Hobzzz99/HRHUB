@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Database } from "lucide-react";
+import { AlertTriangle, Gauge, MousePointer2, ShieldCheck } from "lucide-react";
 
 import {
   Card,
@@ -21,24 +21,46 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Database className="size-5 text-primary" /> Data source
+            <ShieldCheck className="size-5 text-primary" /> Data source
             <span className="ml-auto inline-flex items-center gap-1 text-sm text-success">
-              <CheckCircle2 className="size-4" /> Apify
+              LinkedIn
             </span>
           </CardTitle>
           <CardDescription>
-            LinkedIn profiles are fetched through Apify&apos;s API. Apify runs the
-            collection on its own infrastructure, so no LinkedIn account is connected
-            here and nothing can get banned. Pick <strong>Apify</strong> as the data
-            source when creating a search.
+            Searches run in a real Chromium window driven from the server. There is
+            nothing to connect here — <strong>you sign in yourself</strong> the first
+            time, and the session is encrypted and reused after that. Pick{" "}
+            <strong>LinkedIn</strong> as the data source when creating a search, or{" "}
+            <strong>Demo data</strong> to run on fixtures with no network calls.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            The Apify token is configured on the server (<code>APIFY_TOKEN</code>), not
-            per user — there is nothing to connect here. Choose <strong>Demo data</strong>
-            on a search to run on fixtures with no network calls.
-          </p>
+        <CardContent className="space-y-4 text-sm text-muted-foreground">
+          <div className="flex gap-3">
+            <MousePointer2 className="mt-0.5 size-4 shrink-0 text-primary" />
+            <p>
+              <strong className="text-foreground">You drive sign-in.</strong> The app
+              never types credentials. When a search needs a login or hits a CAPTCHA,
+              the browser window waits for you to handle it, then carries on.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Gauge className="mt-0.5 size-4 shrink-0 text-primary" />
+            <p>
+              <strong className="text-foreground">20 profiles per hour.</strong> The
+              limit is a rolling window kept on disk, so it holds across searches and
+              across restarts. A search that runs out stops early and keeps whatever it
+              already collected.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <p>
+              <strong className="text-foreground">This breaches LinkedIn&apos;s User
+              Agreement</strong> and the account you sign in with can be restricted.
+              Read <code>COMPLIANCE.md</code> before running it on an account you care
+              about.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

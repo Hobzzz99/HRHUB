@@ -6,9 +6,11 @@ a class — nothing else in the app changes.
 
 Names map to *how* candidates are obtained:
   mock       — fixtures, no network
-  apify      — LinkedIn data bought from Apify Actors (no LinkedIn account)
-  linkedin   — scraping LinkedIn ourselves with Playwright (ToS-breaching, and
-               liable to get the account restricted; see COMPLIANCE.md)
+  linkedin   — scraping LinkedIn ourselves with Playwright, signed in by hand
+               and capped at 20 profiles/hour (ToS-breaching, and liable to get
+               the account restricted; see COMPLIANCE.md)
+  apify      — LinkedIn data bought from Apify Actors (no LinkedIn account).
+               Currently unused; needs APIFY_TOKEN to be set again.
 """
 
 from __future__ import annotations

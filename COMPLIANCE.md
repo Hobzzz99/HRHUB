@@ -20,6 +20,12 @@ the entire application on deterministic fixtures. The Playwright provider is **o
 disabled by default**, and isolated in its own worker so it can be removed without touching
 the rest of the app.
 
+## Current configuration
+
+This checkout is set to `PROVIDER=linkedin` — it scrapes with your own account. Everything
+above applies. Switch to `mock` (fixtures) or `apify` at any time; they are drop-in
+`CandidateProvider` implementations and nothing else in the app changes.
+
 ## Recommended path
 
 Prefer a data source that does not require you to automate a logged-in LinkedIn session.
@@ -41,13 +47,40 @@ switching requires no changes elsewhere:
 You accept the risk above. The code applies these mitigations, none of which are a
 guarantee:
 
-- Credentials **and** session state (`storageState`) are encrypted at rest with Fernet
-  (`app/core/crypto.py`); the key lives only in `CREDENTIAL_ENC_KEY`.
-- Logins are minimized by persisting and reusing the browser session.
-- Configurable human-like delays with jitter between actions (`SCRAPE_*` env vars).
+- **A hard volume cap of 20 profiles per rolling hour** (`SCRAPE_MAX_PROFILES_PER_HOUR`).
+  This is the mitigation that actually matters — volume is what abuse detection keys on.
+  The window is persisted to `backend/_state/`, so it survives worker restarts instead of
+  handing out a fresh budget after every crash or re-run. A search that exhausts it stops
+  early and keeps what it collected.
+- **Sign-in is manual.** The app never types credentials and stores none; you log in and
+  clear CAPTCHAs yourself in a visible window (`SCRAPE_HEADLESS=false`). This keeps the
+  most heavily-scrutinised step human, and means a stolen database yields no password.
+- Session state (`storageState`) is encrypted at rest with Fernet (`app/core/crypto.py`);
+  the key lives only in `CREDENTIAL_ENC_KEY`. Reusing it keeps logins rare.
+- **Human-behaviour emulation** (`SCRAPE_HUMANIZE`, `app/providers/human*.py`): Bezier
+  pointer paths with ballistic overshoot and correction, inertial scroll bursts,
+  log-normal action pacing with micro-breaks, typing at a variable WPM with corrected
+  typos, and a 10-point honeypot check before any click.
+- **Fingerprint consistency** (`app/providers/fingerprint.py`): automation flags removed,
+  `navigator`/WebGL/client hints kept in agreement, WebRTC leak prevention, timezone
+  pinned to the locale. The claimed Chrome version is read off the running engine, never
+  hard-coded — claiming a newer Chrome than the binary actually is fails plain feature
+  detection. This removes *contradictions*, which is all it can do; it does not make the
+  traffic anonymous.
+- **Per-account fingerprints.** The GPU, CPU/memory, display and OS build are derived
+  from the provider-account row id, so each connected account presents one stable machine
+  and two accounts never present the same one. This matters because device correlation is
+  how platforms link accounts: a fixed fingerprint means a restriction on one account can
+  carry to the next you sign in with. Deleting the account row to switch accounts rotates
+  the fingerprint with it. The pools yield ~200 distinct identities, so this defeats
+  *identical*-device matching, not a determined correlation effort.
+- **What is NOT mitigated: your IP address.** Every request still comes from this host.
+  Signing a second account in from the same IP shortly after the first was restricted is
+  the single strongest link left, and there is no proxy support in `BrowserPool`.
 - A conservative pre-filter reduces the number of profiles actually opened.
-- Use a **dedicated, disposable account** you are willing to lose — never a personal or
-  primary recruiting account.
+- Prefer a **dedicated, disposable account** you are willing to lose. If you sign in with a
+  personal or primary recruiting account, understand that a restriction there is
+  unrecoverable without sending LinkedIn government ID.
 
 ## Data protection & minimization
 

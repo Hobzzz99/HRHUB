@@ -1,7 +1,11 @@
-"""Provider-account credentials (opt-in Playwright provider only).
+"""Provider-account status (opt-in LinkedIn provider only).
 
-Stores LinkedIn credentials encrypted at rest. Only relevant when
-`PROVIDER=playwright`. See COMPLIANCE.md before using.
+`GET` reports whether a browser session has been captured yet — the useful half,
+since `PROVIDER=linkedin` signs in manually and stores the resulting session.
+
+The `POST` credential route is **vestigial**: nothing reads the credentials it
+stores now that sign-in is manual. It is retained so existing clients do not
+break, and should be deleted once none remain. See COMPLIANCE.md.
 """
 
 from __future__ import annotations

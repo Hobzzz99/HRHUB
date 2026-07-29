@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-ProviderName = Literal["mock", "apify", "playwright"]
+ProviderName = Literal["mock", "apify", "playwright", "linkedin"]
 Toggle = Literal["on", "off"]
 
 
@@ -53,13 +53,49 @@ class Settings(BaseSettings):
     scrape_min_delay_ms: int = 1500
     scrape_max_delay_ms: int = 4000
     scrape_max_profiles: int = 25
-    # Headless is easily detected by LinkedIn. Run headed locally (a real window
-    # opens; you can solve a CAPTCHA if shown). Keep True on a headless server.
-    scrape_headless: bool = True
-    # When headed and LinkedIn shows a security checkpoint, how long to wait for
-    # you to solve it by hand before giving up. Headless runs never wait (nobody
-    # is there to solve it) and fail immediately.
-    scrape_challenge_timeout_s: int = 180
+
+    # --- Scraping rate limit (the real safety control) ---
+    # Hard ceiling on profiles opened in any rolling window, counted across
+    # searches AND worker restarts (see providers/rate_limit.py). Volume is what
+    # gets an account flagged; keep this low.
+    scrape_max_profiles_per_hour: int = 20
+    scrape_rate_limit_window_s: int = 3600
+    # How long a running search will sit waiting for the next slot before
+    # stopping early and keeping what it already collected. Longer than this and
+    # the search would just hold a browser open doing nothing.
+    scrape_rate_limit_max_wait_s: int = 600
+    # Where the rolling window is persisted (relative to the worker's cwd).
+    scrape_state_dir: str = "_state"
+
+    # --- Manual login / challenge handling ---
+    # Login is done BY HAND in the browser window: no credentials are typed by
+    # the app. Headless therefore cannot work — nobody is there to sign in.
+    scrape_headless: bool = False
+    # How long to hold the window open waiting for you to finish signing in.
+    scrape_login_timeout_s: int = 600
+    # How long to wait for you to clear a CAPTCHA / security checkpoint.
+    scrape_challenge_timeout_s: int = 300
+
+    # --- Human behaviour emulation ---
+    # Bezier mouse paths, inertial scrolling, log-normal pacing, typo-correcting
+    # typing, fingerprint consistency, honeypot avoidance. Off makes runs faster
+    # and much more obviously automated; only useful for debugging selectors.
+    scrape_humanize: bool = True
+    # Seeds the behaviour RNG for reproducible runs. Empty = fresh randomness.
+    scrape_behavior_seed: str = ""
+    # Max screenfuls to read down a profile while waiting for its lazy sections
+    # (Experience/Skills render only once scrolled near, below the Activity
+    # feed). Stops early once they appear or the page stops growing.
+    scrape_max_profile_scrolls: int = 25
+    # Follow "Show all" to the skills details page. The profile card lists
+    # only the top two, and skills are 30% of the match score.
+    scrape_fetch_all_skills: bool = True
+    # IANA timezone reported to the page (e.g. "Africa/Cairo"). Empty keeps the
+    # host's own timezone, which is the consistent choice when you log in
+    # yourself from this machine.
+    scrape_timezone: str = ""
+    scrape_locale: str = "en-US"
+
     # Where Playwright browser binaries live. Leave empty to use Playwright's
     # default (correct in the Docker worker image); set it when browsers were
     # installed to a custom path (e.g. a drive with free space).

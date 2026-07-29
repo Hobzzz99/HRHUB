@@ -8,8 +8,15 @@ pre-filtering) and a full `RawProfile` from `fetch_profile`. All scoring lives i
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 
 from app.domain.models import RawProfile, SearchCriteria, SearchHit
+
+#: Called with a fresh Playwright ``storage_state`` whenever a provider
+#: establishes or refreshes a browser session, so it can be encrypted and
+#: stored. Lives here rather than in the provider so `search_runner` can type
+#: its callback without importing Playwright.
+SessionCallback = Callable[[dict], Awaitable[None]]
 
 
 class ProviderError(RuntimeError):
