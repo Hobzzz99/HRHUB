@@ -1,4 +1,4 @@
-# Opens the encrypted path from this PC to the server's database and job queue.
+﻿# Opens the encrypted path from this PC to the server's database and job queue.
 #
 # The server keeps Postgres and Redis on loopback, so they are unreachable from
 # the internet. This forwards two local ports across SSH instead of exposing

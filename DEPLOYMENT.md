@@ -178,7 +178,18 @@ Three things must be right:
 worker refuses to start without it, but it cannot tell whether the id is the
 right person's — so check it.
 
-### 2.3 Run — two windows, both stay open
+### 2.3 Check the laptop is ready
+
+```powershell
+.\preflight.ps1
+```
+
+Verifies Python, Chromium, the tunnel, the state directory and the power
+settings, and prints the fix for anything missing. It also shows the user id
+this laptop will run searches for — confirm it belongs to the person sitting
+there, because nothing server-side can.
+
+### 2.4 Run — two windows, both stay open
 
 ```powershell
 # Window 1: the encrypted path to the server
@@ -195,7 +206,7 @@ When they start a search on the website, **Chromium opens on this laptop.** The
 first run of the day asks for LinkedIn sign-in and a CAPTCHA, cleared by hand.
 Nothing types a password.
 
-### 2.4 Keep it awake
+### 2.5 Keep it awake
 
 `powercfg /change standby-timeout-ac 0` — a sleeping laptop means that
 recruiter's searches queue and never run.
@@ -219,6 +230,13 @@ personal data carries deletion obligations that a local dev database did not.
 This is a legal exposure rather than an inconvenience — see §15 of the briefing.
 
 ---
+
+## When something breaks
+
+See [RUNBOOK.md](RUNBOOK.md). It covers the report you will actually get — "my
+search did nothing" — which has six distinct causes the app now distinguishes on
+screen, plus account restrictions, filter breakage, backups, deletion requests
+and offboarding.
 
 ## Before switching it on for everyone
 

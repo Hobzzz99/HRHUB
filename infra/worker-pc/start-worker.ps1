@@ -1,4 +1,4 @@
-# Starts the scraping worker on this PC.
+﻿# Starts the scraping worker on this PC.
 #
 # Run tunnel.ps1 in another window first. Then leave this one open: when a
 # recruiter starts a search on the website, a Chromium window opens here, and
@@ -82,9 +82,23 @@ if ($env:SCRAPE_STATE_DIR -and -not (Test-Path $env:SCRAPE_STATE_DIR)) {
     New-Item -ItemType Directory -Force $env:SCRAPE_STATE_DIR | Out-Null
 }
 
+# Kept beside the rate-limit state so one folder holds everything this worker
+# owns, and so it is backed up with the machine rather than living in a temp
+# directory that gets cleaned.
+$logDir = Join-Path (Split-Path -Parent $env:SCRAPE_STATE_DIR) "logs"
+New-Item -ItemType Directory -Force $logDir | Out-Null
+$logFile = Join-Path $logDir ("worker-{0:yyyy-MM-dd}.log" -f (Get-Date))
+
+# Keep a fortnight. These contain profile URLs, so they are candidate data and
+# are not kept indefinitely.
+Get-ChildItem $logDir -Filter "worker-*.log" -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
 Write-Host "Worker starting." -ForegroundColor Cyan
 Write-Host "  provider   $($env:PROVIDER)"
 Write-Host "  queue      $queue   (this recruiter's searches only)"
+Write-Host "  log        $logFile"
 Write-Host "  hourly cap $($env:SCRAPE_MAX_PROFILES_PER_HOUR) profiles"
 Write-Host "  budget     $($env:SCRAPE_STATE_DIR)"
 Write-Host ""
@@ -97,8 +111,15 @@ try {
     # time keeps the hourly budget honest (each process keeps its own count),
     # and solo avoids the prefork pool, which does not work on Windows.
     # -Q restricts this worker to its own recruiter's queue.
+    #
+    # --logfile as well as the console. This is the only place in the whole
+    # system a stack trace is captured, and it was landing exclusively in a
+    # PowerShell window on a laptop — closed at the end of the day, gone on
+    # reboot. When a recruiter says "my search did nothing", this file is the
+    # only thing that can answer them.
     celery -A app.workers.celery_app.celery_app worker `
-        --loglevel=info --pool=solo --concurrency=1 -Q $queue
+        --loglevel=info --pool=solo --concurrency=1 -Q $queue `
+        --logfile "$logFile"
 }
 finally {
     Pop-Location
