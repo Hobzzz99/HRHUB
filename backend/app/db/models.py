@@ -7,18 +7,20 @@ never a LinkedIn-specific column, so new providers slot in without schema change
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,7 +33,7 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TimestampMixin:
@@ -51,10 +53,10 @@ class User(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
 
-    searches: Mapped[list["Search"]] = relationship(
+    searches: Mapped[list[Search]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    provider_accounts: Mapped[list["ProviderAccount"]] = relationship(
+    provider_accounts: Mapped[list[ProviderAccount]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -62,24 +64,43 @@ class User(Base, TimestampMixin):
 class ProviderAccount(Base, TimestampMixin):
     """A recruiter's linked account for a scraping/API provider.
 
-    Credentials and browser session state are stored **encrypted** (Fernet) and
-    are only needed when the Playwright provider is enabled.
+    Browser session state is stored **encrypted** (Fernet) and is only needed
+    when the Playwright provider is enabled.
+
+    A user keeps **one live row per provider** (active or restricted) alongside
+    every row they have retired. Retired rows are never deleted because `id`
+    seeds the browser fingerprint: keeping them is what stops a replacement
+    account presenting the same machine as the account it replaced, which is
+    how platforms link one account to the next.
     """
 
     __tablename__ = "provider_accounts"
-    __table_args__ = (UniqueConstraint("user_id", "provider"),)
+    __table_args__ = (
+        # Partial unique index rather than a plain constraint: retired rows must
+        # be allowed to pile up, but only one may be live at a time. Spelled per
+        # dialect because SQLAlchemy has no portable partial index.
+        Index(
+            "uq_provider_accounts_live",
+            "user_id",
+            "provider",
+            unique=True,
+            sqlite_where=text("status <> 'retired'"),
+            postgresql_where=text("status <> 'retired'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
-    encrypted_credentials: Mapped[str | None] = mapped_column(Text)
     encrypted_session_state: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(16), default=ProviderAccountStatus.ACTIVE, nullable=False
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Why this row stopped being usable, shown to the operator in Settings.
+    status_reason: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped[User] = relationship(back_populates="provider_accounts")
 
@@ -94,11 +115,17 @@ class Search(Base, TimestampMixin):
 
     # Requirements
     job_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Legacy. Scoring moved to keywords in v2 and nothing reads this any more;
+    #: kept so historical searches still render what the recruiter typed.
     skills: Mapped[list[str]] = mapped_column(JSON, default=list)
     location: Mapped[str | None] = mapped_column(String(255))
     min_experience: Mapped[float] = mapped_column(Float, default=0.0)
+    require_title_match: Mapped[bool] = mapped_column(default=True)
+    graduation_year_from: Mapped[int | None] = mapped_column(Integer)
+    graduation_year_to: Mapped[int | None] = mapped_column(Integer)
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
-    company: Mapped[str | None] = mapped_column(String(255))
+    companies: Mapped[list[str]] = mapped_column(JSON, default=list)
+    company_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     industry: Mapped[str | None] = mapped_column(String(255))
     max_results: Mapped[int] = mapped_column(Integer, default=25)
     min_match_score: Mapped[float] = mapped_column(Float, default=0.0)
@@ -116,7 +143,7 @@ class Search(Base, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="searches")
-    results: Mapped[list["SearchResult"]] = relationship(
+    results: Mapped[list[SearchResult]] = relationship(
         back_populates="search", cascade="all, delete-orphan"
     )
 
@@ -151,7 +178,7 @@ class Candidate(Base, TimestampMixin):
         DateTime(timezone=True), default=_now, nullable=False, index=True
     )
 
-    results: Mapped[list["SearchResult"]] = relationship(back_populates="candidate")
+    results: Mapped[list[SearchResult]] = relationship(back_populates="candidate")
 
 
 class SearchResult(Base):
@@ -169,8 +196,8 @@ class SearchResult(Base):
     match_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
     score_version: Mapped[str] = mapped_column(String(16), nullable=False)
     score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
-    matched_skills: Mapped[list[str]] = mapped_column(JSON, default=list)
-    missing_skills: Mapped[list[str]] = mapped_column(JSON, default=list)
+    matched_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    missing_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
     reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
     rank: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(

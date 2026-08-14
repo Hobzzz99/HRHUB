@@ -33,6 +33,22 @@ class CandidateSource(StrEnum):
 
 
 class ProviderAccountStatus(StrEnum):
+    """Lifecycle of a connected provider account.
+
+    A user has at most one *live* row per provider (active or restricted) plus
+    any number of retired ones. Retired rows are never deleted: the row id seeds
+    the browser fingerprint, so keeping them is what guarantees a replacement
+    account never presents the same machine as the account it replaced.
+    """
+
     ACTIVE = "active"
-    EXPIRED = "expired"
-    INVALID = "invalid"
+    #: The platform locked the account. Terminal — searches refuse to run on it
+    #: until the operator rotates to a different account.
+    RESTRICTED = "restricted"
+    #: Superseded by a rotation. Kept only so its id is never reused.
+    RETIRED = "retired"
+
+    @property
+    def is_live(self) -> bool:
+        """True for the one row that currently represents this provider."""
+        return self is not ProviderAccountStatus.RETIRED

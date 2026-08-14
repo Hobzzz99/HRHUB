@@ -10,6 +10,7 @@ dev user so the app runs end-to-end without configuring Supabase.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -30,6 +31,19 @@ _bearer = HTTPBearer(auto_error=False)
 class CurrentUser:
     id: str
     email: str | None = None
+
+
+def as_user_uuid(user_id: str) -> uuid.UUID:
+    """Parse a user id into the UUID the `users.id` column stores.
+
+    Ids arrive as the string `sub` claim of a JWT, but every query compares them
+    against a UUID column. Doing the conversion in one named place keeps that
+    coupling visible instead of scattering `uuid.UUID(...)` through the services.
+
+    ``str()`` first because callers also pass ORM `UUID` columns straight through
+    (`search_runner` hands over `search.user_id`), and `uuid.UUID` rejects those.
+    """
+    return uuid.UUID(str(user_id))
 
 
 @lru_cache

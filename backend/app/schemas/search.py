@@ -12,12 +12,15 @@ from app.schemas.candidate import CandidateSummary
 
 class SearchCreate(BaseModel):
     job_title: str = Field(min_length=1, max_length=255)
-    skills: list[str] = Field(default_factory=list)
     critical_skills: list[str] = Field(default_factory=list)
     location: str | None = None
     min_experience: float = Field(default=0.0, ge=0)
+    require_title_match: bool = True
+    graduation_year_from: int | None = Field(default=None, ge=1950, le=2100)
+    graduation_year_to: int | None = Field(default=None, ge=1950, le=2100)
     keywords: list[str] = Field(default_factory=list)
-    company: str | None = None
+    companies: list[str] = Field(default_factory=list)
+    company_ids: list[str] = Field(default_factory=list)
     industry: str | None = None
     max_results: int = Field(default=25, ge=1, le=200)
     min_match_score: float = Field(default=0.0, ge=0, le=100)
@@ -38,12 +41,15 @@ class SearchRead(BaseModel):
 
     id: uuid.UUID
     job_title: str
-    skills: list[str]
     critical_skills: list[str]
     location: str | None
     min_experience: float
+    require_title_match: bool
+    graduation_year_from: int | None
+    graduation_year_to: int | None
     keywords: list[str]
-    company: str | None
+    companies: list[str]
+    company_ids: list[str]
     industry: str | None
     max_results: int
     min_match_score: float
@@ -66,7 +72,7 @@ class SearchResultRead(BaseModel):
     match_score: float
     score_version: str
     score_breakdown: dict
-    matched_skills: list[str]
-    missing_skills: list[str]
+    matched_keywords: list[str]
+    missing_keywords: list[str]
     reasons: list[str]
     rank: int

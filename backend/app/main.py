@@ -6,9 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.routes import candidates, dashboard, health, provider_accounts, search
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
-from app.api.routes import candidates, dashboard, health, provider_accounts, search
 
 logger = get_logger(__name__)
 

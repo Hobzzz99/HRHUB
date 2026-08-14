@@ -54,6 +54,17 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# `Depends(...)`/`Query(...)` in a default is how FastAPI declares dependencies;
+# it is evaluated per request, not once at import, so B008 does not apply.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+]
+
 [tool.mypy]
 python_version = "3.12"
 plugins = ["pydantic.mypy"]

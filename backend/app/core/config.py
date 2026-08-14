@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-ProviderName = Literal["mock", "apify", "playwright", "linkedin"]
+ProviderName = Literal["mock", "apify", "playwright", "linkedin", "indeed"]
 Toggle = Literal["on", "off"]
 
 
@@ -81,6 +81,23 @@ class Settings(BaseSettings):
     # typing, fingerprint consistency, honeypot avoidance. Off makes runs faster
     # and much more obviously automated; only useful for debugging selectors.
     scrape_humanize: bool = True
+    # Browser fingerprint + anti-automation patching. Separate from humanize
+    # because it is the layer most likely to *cause* trouble: reCAPTCHA and
+    # similar fingerprint aggressively, and patched values that do not agree
+    # can fail their check — producing a sign-in that loops after the CAPTCHA
+    # rather than completing. Turn off to test whether that is happening.
+    scrape_stealth: bool = True
+    # Park the browser window off-screen for the parts of a run nobody needs to
+    # watch, bringing it back only for sign-in and CAPTCHAs. Recruiters share
+    # their machine with this, and a window that steals focus every few minutes
+    # makes it unusable.
+    #
+    # Set false if searches stall on half-drawn pages. Minimising the window
+    # provably does that — Chromium stops compositing and LinkedIn's lazily
+    # drawn results never render past their skeleton placeholders — and while
+    # off-screen keeps the window in its normal state and should paint, that is
+    # not proven against LinkedIn itself. This switch is the way back.
+    scrape_window_hidden: bool = True
     # Seeds the behaviour RNG for reproducible runs. Empty = fresh randomness.
     scrape_behavior_seed: str = ""
     # Max screenfuls to read down a profile while waiting for its lazy sections
@@ -95,6 +112,10 @@ class Settings(BaseSettings):
     # yourself from this machine.
     scrape_timezone: str = ""
     scrape_locale: str = "en-US"
+    # How long a single page navigation may take. Playwright defaults to 30s,
+    # which LinkedIn exceeds often enough to abort otherwise-healthy runs —
+    # their pages are heavy and we deliberately arrive at a human pace.
+    scrape_navigation_timeout_s: int = 60
 
     # Where Playwright browser binaries live. Leave empty to use Playwright's
     # default (correct in the Docker worker image); set it when browsers were
