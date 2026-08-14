@@ -31,6 +31,7 @@ Implementation notes:
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import re
 import time
@@ -41,6 +42,9 @@ from playwright.async_api import (
     BrowserContext,
     Locator,
     Page,
+)
+from playwright.async_api import (
+    Error as PWError,
 )
 from playwright.async_api import (
     TimeoutError as PWTimeout,
@@ -55,16 +59,27 @@ from app.domain.models import (
     SearchCriteria,
     SearchHit,
 )
+from app.providers import search_plan, window
 from app.providers.base import (
+    AccountRestrictedError,
     CandidateProvider,
     ProfileUnavailableError,
     ProviderError,
     SessionCallback,
 )
 from app.providers.browser_pool import BrowserPool
+from app.providers.company_filter import (
+    COMPANY,
+    CompanyIdCache,
+    apply_facet,
+)
 from app.providers.human import HumanActor
 from app.providers.human_motion import PacingProfile, lognormal_delay
-from app.providers.rate_limit import LimiterSnapshot, SlidingWindowLimiter
+from app.providers.rate_limit import (
+    LimiterSnapshot,
+    SlidingWindowLimiter,
+    budget_for,
+)
 
 logger = get_logger(__name__)
 
@@ -161,6 +176,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         midpoint_s = (settings.scrape_min_delay_ms + settings.scrape_max_delay_ms) / 2000.0
         self._pacing = PacingProfile(action_median_s=max(0.2, midpoint_s))
         self._limiter = limiter or default_limiter()
+        self._company_ids_cache = CompanyIdCache()
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -183,17 +199,32 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         if self._page is None or self._page.is_closed():
             context = await self._get_context()
             self._page = await context.new_page()
+            # Headed, so LinkedIn sees a real browser — but out of the way, so
+            # the recruiter can keep working. It comes back only when a person
+            # is needed; see providers/window.py.
+            if not settings.scrape_headless and settings.scrape_window_hidden:
+                await window.conceal(self._page)
             self._actor = HumanActor(self._page, rng=self._rng, profile=self._pacing)
             self._authenticated = False
         assert self._actor is not None
         return self._page, self._actor
 
+    #: The cookie LinkedIn sets once a session is genuinely signed in. Storage
+    #: state without it is a logged-out session and must never be saved over a
+    #: good one.
+    _AUTH_COOKIE = "li_at"
+
     async def aclose(self) -> None:
         if self._context is not None:
-            await self._persist_session(self._context)
+            # Only on the way out of a *successful* session. Persisting
+            # unconditionally overwrote a working login with a logged-out state
+            # whenever a run ended before sign-in finished — which then forced a
+            # fresh login next time, which could fail the same way, looping.
+            if self._authenticated:
+                await self._persist_session(self._context)
             try:
                 await self._context.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — best-effort teardown
                 pass
             self._context = None
         self._page = None
@@ -203,12 +234,28 @@ class PlaywrightLinkedInProvider(CandidateProvider):
             self._pool = None
 
     async def _persist_session(self, context: BrowserContext) -> None:
+        """Store the browser session, but only when it is genuinely signed in.
+
+        The stored state is checked for the auth cookie rather than trusted from
+        a flag. A logged-out state saved over a working one costs the operator a
+        fresh sign-in — and if that sign-in also fails, it saves another bad
+        state, so the fault repeats itself indefinitely.
+        """
         if self._on_session_update is None:
             return
         try:
             state = await context.storage_state()
+            names = {cookie.get("name") for cookie in state.get("cookies", [])}
+            if self._AUTH_COOKIE not in names:
+                logger.warning(
+                    "session_not_persisted_not_signed_in",
+                    reason=f"no {self._AUTH_COOKIE} cookie",
+                    cookies=len(names),
+                )
+                return
             await self._on_session_update(state)
-        except Exception:  # noqa: BLE001
+            logger.info("session_persisted", cookies=len(names))
+        except Exception:  # noqa: BLE001 — a lost session costs one extra login
             logger.warning("session_persist_failed", exc_info=True)
 
     def budget(self) -> LimiterSnapshot:
@@ -217,10 +264,33 @@ class PlaywrightLinkedInProvider(CandidateProvider):
 
     # --- auth --------------------------------------------------------------
 
+    async def _goto(self, page: Page, url: str) -> None:
+        """Navigate, translating the failure modes of someone else's site.
+
+        A slow or aborted navigation is a normal event when driving LinkedIn,
+        not a bug in this module. Raising `ProfileUnavailableError` lets the
+        pipeline skip one profile and carry on instead of ending the run — the
+        raw Playwright error would escape untranslated and cost every profile
+        already collected.
+        """
+        try:
+            await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=settings.scrape_navigation_timeout_s * 1000,
+            )
+        except PWTimeout as exc:
+            raise ProfileUnavailableError(
+                f"Timed out after {settings.scrape_navigation_timeout_s}s loading {url}. "
+                "LinkedIn was slow or the connection dropped."
+            ) from exc
+        except PWError as exc:
+            raise ProfileUnavailableError(f"Could not load {url}: {exc}") from exc
+
     async def _ensure_authenticated(self, page: Page, actor: HumanActor) -> None:
         if self._authenticated and await self._is_authenticated(page):
             return
-        await page.goto(FEED_URL, wait_until="domcontentloaded")
+        await self._goto(page, FEED_URL)
         await self._dismiss_cookie_banner(page, actor)
         # Let any client-side redirect settle before judging where we landed.
         await asyncio.sleep(lognormal_delay(1.2, self._rng))
@@ -243,7 +313,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
             try:
                 if await page.locator(marker).count() > 0:
                     return True
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — one unusable marker is not a verdict
                 pass
         return False
 
@@ -265,23 +335,34 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         This is terminal: no retry, no waiting, and no change to this module can
         clear it. Reporting it as "no login form / likely a bot challenge" sends
         people looking for a selector bug that does not exist.
+
+        Raises :class:`AccountRestrictedError`, not `ProviderError`, so the
+        pipeline stops the whole run instead of skipping one profile and opening
+        the next — re-hitting a locked account is what makes a restriction
+        permanent.
         """
         if not self._is_restricted(page.url):
             return
         shot = await self._dump_debug(page, "account-restricted")
-        raise ProviderError(
+        raise AccountRestrictedError(
             "LinkedIn has RESTRICTED this account — it is not a CAPTCHA and cannot "
             "be solved by retrying. LinkedIn detected the automated access and locked "
             "the account until its owner verifies their identity (government ID) at "
-            "linkedin.com. Do not run this provider again on this account: further "
-            "attempts risk making the restriction permanent. Switch the search to a "
-            f"different data source. Debug: {shot}."
+            "linkedin.com. This search has been stopped and the account marked "
+            "restricted; it will not be used again. To carry on with a different "
+            "LinkedIn account, use Connect a different account in Settings — but read "
+            f"COMPLIANCE.md first, because the next one is likely to go the same way. "
+            f"Debug: {shot}."
         )
 
     async def _manual_sign_in(self, page: Page, actor: HumanActor) -> None:
         """Open the login page and wait for the operator to sign in themselves."""
         if page.url.rstrip("/") != LOGIN_URL:
-            await page.goto(LOGIN_URL, wait_until="domcontentloaded")
+            # Through _goto so the configured navigation timeout applies. Calling
+            # page.goto directly took Playwright's 30s default and aborted
+            # sign-in on a slow connection while the operator was still waiting
+            # for the window to appear.
+            await self._goto(page, LOGIN_URL)
             await self._dismiss_cookie_banner(page, actor)
         await self._wait_for_human(
             page,
@@ -314,6 +395,11 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         logger.warning("linkedin_awaiting_human", label=label, timeout_s=timeout_s)
         print(f"\n>>> {banner}. Waiting up to {timeout_s}s...\n", flush=True)
 
+        # The window has been minimised since the run started. This is the only
+        # moment it is any use to anyone, so bring it up — otherwise the search
+        # sits waiting for a person who has no idea they are being waited for.
+        await window.reveal(page)
+
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             await asyncio.sleep(2.0)
@@ -337,6 +423,9 @@ class PlaywrightLinkedInProvider(CandidateProvider):
                 # A fresh sign-in mints a new session — keep it, so this is the
                 # last time anyone has to do it.
                 await self._persist_session(page.context)
+                # Their part is done; the rest of the run needs no watching.
+                if settings.scrape_window_hidden:
+                    await window.conceal(page)
                 return
 
         shot = await self._dump_debug(page, f"{label}-timeout")
@@ -378,7 +467,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
                     await actor.click(btn)
                     await asyncio.sleep(lognormal_delay(0.6, self._rng))
                     return
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — try the next selector, banner is optional
                 pass
 
     async def _dump_debug(self, page: Page, label: str) -> str:
@@ -406,28 +495,127 @@ class PlaywrightLinkedInProvider(CandidateProvider):
     # --- search ------------------------------------------------------------
 
     def _keywords(self, criteria: SearchCriteria) -> str:
-        # LinkedIn filters location by a resolved geo facet (geoUrn), not free text.
-        # Without its private typeahead API we can only fold location into the
-        # keyword query — this biases results toward the location but does NOT
-        # strictly filter to it. Proper geo filtering needs a structured provider.
-        parts = [criteria.job_title, *criteria.keywords, criteria.location]
-        return " ".join(p for p in parts if p and p.strip())
+        """What goes in the search box: **the job title, and nothing else.**
+
+        Everything that narrows the result set — employer, location — is applied
+        afterwards through LinkedIn's own filter panel, which resolves each to an
+        id and filters server-side. Folding them into the search text was both
+        imprecise ("external audit manager Egypt" matches anyone who mentions
+        Egypt) and wasteful, because it biased results without restricting them,
+        so profiles we would discard still cost hourly budget to open.
+
+        The recruiter's keywords are deliberately absent too: they are scoring
+        signal, not query text, and adding them narrows what LinkedIn returns
+        before we get a chance to rank it.
+        """
+        return criteria.job_title.strip()
+
+    async def _widen_if_thin(
+        self,
+        page: Page,
+        actor: HumanActor,
+        criteria: SearchCriteria,
+        keywords: str,
+        steps: list[search_plan.FilterStep],
+        facets: dict[str, list[str]],
+    ) -> tuple[list[search_plan.FilterStep], dict[str, list[str]]]:
+        """Give up the least important filter while the result set is too thin.
+
+        What a recruiter does without thinking: filter hard, see four results,
+        drop the city and look again. Filtering to nothing is not precision, it
+        is a wasted search — and the alternative, never filtering, wastes the
+        hourly budget on people who do not qualify.
+        """
+        for _ in range(len(steps)):
+            found = len(await self._extract_hits(page))
+            if not search_plan.too_thin(found, criteria.max_results):
+                return steps, facets
+
+            steps, given_up = search_plan.relax(steps)
+            if given_up is None:
+                return steps, facets
+
+            logger.info(
+                "search_widened",
+                gave_up=given_up.label,
+                found=found,
+                wanted=criteria.max_results,
+                remaining=search_plan.describe(steps),
+            )
+            facets = {
+                param: ids
+                for param, ids in facets.items()
+                if param != given_up.url_param
+            }
+            await actor.settle()
+            await self._goto(page, self._results_url(keywords, 1, facets))
+            await self._ensure_page_ok(page, actor)
+            await actor.dwell(1.2)
+            await actor.read_page(screens=2.5)
+
+        return steps, facets
+
+    async def _facet_ids(
+        self,
+        page: Page,
+        actor: HumanActor,
+        facet,
+        values: list[str],
+    ) -> list[str]:
+        """Resolve one filter panel's values to ids, cache-first."""
+        if not values:
+            return []
+
+        cached, missing = self._company_ids_cache.known(values, facet.name)
+        if not missing:
+            logger.info("facet_ids_from_cache", facet=facet.name, count=len(cached))
+            return cached
+
+        try:
+            resolved = await apply_facet(
+                page, actor, facet, values, self._company_ids_cache
+            )
+        except Exception as exc:  # noqa: BLE001 — fall back, never fail the search
+            await self._dump_debug(page, f"{facet.name}-filter")
+            logger.warning("facet_failed", facet=facet.name, error=str(exc)[:160])
+            return []
+
+        if not resolved:
+            await self._dump_debug(page, f"{facet.name}-filter")
+            logger.info("facet_unavailable_falling_back", facet=facet.name)
+        return resolved
 
     async def search(self, criteria: SearchCriteria) -> list[SearchHit]:
         page, actor = await self._get_page()
         await self._ensure_authenticated(page, actor)
         keywords = self._keywords(criteria)
 
+        steps = search_plan.plan(criteria)
+        logger.info("search_plan", filters=search_plan.describe(steps))
+
         hits: dict[str, SearchHit] = {}
         page_num = 1
+        facets: dict[str, list[str]] = {}
         while len(hits) < criteria.max_results and page_num <= 10:
             if page_num == 1:
                 await self._open_first_results_page(page, actor, keywords)
+                # Narrowing happens here, on the results page, through LinkedIn's
+                # own filter panels — the way a recruiter does it. Each panel
+                # resolves its values to ids, which then travel in every later
+                # page's URL.
+                facets = await self._apply_filters(page, actor, criteria, steps)
+                if facets:
+                    await actor.settle()
+                    await self._goto(page, self._results_url(keywords, 1, facets))
+                    await self._ensure_page_ok(page, actor)
+                    await actor.dwell(1.2)
+                    await actor.read_page(screens=2.5)
+                    steps, facets = await self._widen_if_thin(
+                        page, actor, criteria, keywords, steps, facets
+                    )
             else:
                 await actor.settle()
-                await page.goto(
-                    self._results_url(keywords, page_num), wait_until="domcontentloaded"
-                )
+                await self._goto(page, self._results_url(keywords, page_num, facets))
             await self._ensure_page_ok(page, actor)
             await actor.dwell(1.4)
             # Results hydrate lazily; reading down the page is what loads them.
@@ -444,11 +632,43 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         return list(hits.values())[: criteria.max_results]
 
     @staticmethod
-    def _results_url(keywords: str, page_num: int) -> str:
-        return (
+    def _results_url(
+        keywords: str, page_num: int, facets: dict[str, list[str]] | None = None
+    ) -> str:
+        """The results URL, carrying whichever facets have been resolved.
+
+        The query string holds the job title only; employer and location travel
+        as their own facet parameters, which is what makes them filter rather
+        than merely bias the ranking.
+        """
+        url = (
             "https://www.linkedin.com/search/results/people/"
             f"?keywords={quote_plus(keywords)}&page={page_num}"
         )
+        for param, ids in sorted((facets or {}).items()):
+            if ids:
+                # LinkedIn expects a JSON array of ids, url-encoded.
+                url += f"&{param}={quote_plus(json.dumps(ids, separators=(',', ':')))}"
+        return url
+
+    async def _apply_filters(
+        self,
+        page: Page,
+        actor: HumanActor,
+        criteria: SearchCriteria,
+        steps: list[search_plan.FilterStep],
+    ) -> dict[str, list[str]]:
+        """Drive the filter panels for a plan, returning the ids each resolved to."""
+        resolved: dict[str, list[str]] = {}
+        for step in steps:
+            if step.facet is COMPANY and criteria.company_ids:
+                # Pasted from a LinkedIn URL, so LinkedIn already resolved them.
+                resolved[step.url_param] = list(criteria.company_ids)
+                continue
+            ids = await self._facet_ids(page, actor, step.facet, step.values)
+            if ids:
+                resolved[step.url_param] = ids
+        return resolved
 
     async def _open_first_results_page(
         self, page: Page, actor: HumanActor, keywords: str
@@ -564,7 +784,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         await self._ensure_authenticated(page, actor)
 
         await actor.settle()
-        await page.goto(hit.source_profile_url, wait_until="domcontentloaded")
+        await self._goto(page, hit.source_profile_url)
         await self._ensure_page_ok(page, actor)
 
         # LinkedIn's authenticated profile DOM is obfuscated (no <h1>, no stable
@@ -800,7 +1020,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
 
         details = page.url.split("?")[0].rstrip("/") + "/details/skills/"
         try:
-            await page.goto(details, wait_until="domcontentloaded")
+            await self._goto(page, details)
             # Wait for the list itself, not just <main>. The page frame arrives
             # long before its entries do, and acting on the empty frame is what
             # made the fallback fire against the whole document.
@@ -865,13 +1085,8 @@ class PlaywrightLinkedInProvider(CandidateProvider):
 
 
 def default_limiter() -> SlidingWindowLimiter:
-    """The process-wide profile budget, configured from settings."""
-    return SlidingWindowLimiter(
-        limit=settings.scrape_max_profiles_per_hour,
-        window_s=settings.scrape_rate_limit_window_s,
-        state_path=Path(settings.scrape_state_dir) / "scrape_rate_limit.json",
-        key="linkedin_profiles",
-    )
+    """This provider's hourly profile budget, keyed to LinkedIn alone."""
+    return budget_for("linkedin")
 
 
 # --- small helpers ---------------------------------------------------------

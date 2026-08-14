@@ -60,6 +60,24 @@ class LimiterSnapshot:
         return max(0, self.limit - self.used)
 
 
+def budget_for(provider: str) -> SlidingWindowLimiter:
+    """The hourly profile budget for one platform.
+
+    Each platform gets its **own** key in the shared state file. A budget shared
+    across platforms would make a busy LinkedIn run silently starve an Indeed
+    one, and the limit exists to protect one account on one site — it is not a
+    global throughput cap.
+    """
+    from app.core.config import settings
+
+    return SlidingWindowLimiter(
+        limit=settings.scrape_max_profiles_per_hour,
+        window_s=settings.scrape_rate_limit_window_s,
+        state_path=Path(settings.scrape_state_dir) / "scrape_rate_limit.json",
+        key=f"{provider}_profiles",
+    )
+
+
 class SlidingWindowLimiter:
     """At most ``limit`` acquisitions in any rolling ``window_s`` seconds."""
 

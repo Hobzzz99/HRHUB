@@ -27,6 +27,18 @@ class ProfileUnavailableError(ProviderError):
     """A specific profile could not be fetched (skip it, keep the search going)."""
 
 
+class AccountRestrictedError(RuntimeError):
+    """The platform has locked the account this provider signs in with.
+
+    Deliberately **not** a :class:`ProviderError`. That base means "recoverable,
+    skip this profile and continue", and callers handle it that way — so
+    inheriting from it would let a restriction be swallowed once per remaining
+    profile, re-hitting a locked account exactly when the error text says to
+    stop. Being a separate type makes the pipeline handle it or crash, never
+    silently continue.
+    """
+
+
 class CandidateProvider(ABC):
     """Abstract candidate source."""
 
@@ -41,10 +53,16 @@ class CandidateProvider(ABC):
     async def fetch_profile(self, hit: SearchHit) -> RawProfile:
         """Fetch and extract a full profile for a search hit."""
 
-    async def aclose(self) -> None:
-        """Release resources (browser, sessions). Safe no-op by default."""
+    async def aclose(self) -> None:  # noqa: B027 — opt-in hook, not a contract
+        """Release resources (browser, sessions). Safe no-op by default.
 
-    async def __aenter__(self) -> "CandidateProvider":
+        Deliberately concrete rather than abstract: only the browser-driven
+        providers hold anything to release, and forcing `mock`/`apify` to write
+        an empty override would be ceremony. Make it abstract if a provider ever
+        leaks by forgetting to implement it.
+        """
+
+    async def __aenter__(self) -> CandidateProvider:
         return self
 
     async def __aexit__(self, *exc: object) -> None:

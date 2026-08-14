@@ -182,6 +182,16 @@ def launch_args(*, headless: bool, profile: FingerprintProfile | None = None) ->
         args.append(
             f"--window-size={profile.viewport['width']},{profile.viewport['height'] + 88}"
         )
+        # The window spends the run minimised (see providers/window.py), and
+        # Chromium throttles timers, rAF and rendering in windows it believes
+        # nobody is watching — which stalls the very page we are driving. These
+        # switches keep a backgrounded window running at full speed. They say
+        # nothing about automation: a real browser accepts them too.
+        args += [
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+        ]
     return args
 
 

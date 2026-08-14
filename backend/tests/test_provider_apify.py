@@ -11,7 +11,6 @@ import pytest
 
 from app.domain.models import SearchCriteria, SearchHit
 from app.domain.scoring import score_candidate
-from app.providers.base import ProfileUnavailableError
 from app.providers.apify_linkedin import (
     ApifyLinkedInProvider,
     _experience_items,
@@ -22,6 +21,7 @@ from app.providers.apify_linkedin import (
     _skill_names,
     _split_range,
 )
+from app.providers.base import ProfileUnavailableError
 from app.providers.factory import get_provider
 
 HIT = SearchHit(source_profile_url="https://www.linkedin.com/in/aya")
@@ -209,17 +209,17 @@ def test_mapped_profile_scores_meaningfully(payload):
     profile = _profile_from_item(payload, "https://www.linkedin.com/in/aya", HIT)
     criteria = SearchCriteria(
         job_title="backend engineer",
-        skills=["Python", "Docker"],
+        keywords=["backend"],
         location="Cairo",
         min_experience=3,
     )
     scored = score_candidate(profile, criteria)
     assert scored.breakdown.title == 100.0
-    assert scored.breakdown.skills == 100.0
+    assert scored.breakdown.keywords == 100.0
     assert scored.breakdown.location == 100.0
     assert scored.breakdown.experience == 100.0
     assert scored.match_score > 30  # the number that started all this
-    assert set(scored.matched_skills) == {"Python", "Docker"}
+    assert scored.matched_keywords == ["backend"]
 
 
 async def test_fetch_profile_raises_when_actor_returns_nothing(monkeypatch):

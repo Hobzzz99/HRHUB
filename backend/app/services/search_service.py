@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.security import as_user_uuid
 from app.db.enums import SearchStatus
 from app.db.models import Candidate, SavedCandidate, Search, SearchResult
 from app.domain.models import SearchCriteria
@@ -20,12 +21,15 @@ from app.schemas.search import SearchCreate, SearchRead
 def criteria_from_search(search: Search) -> SearchCriteria:
     return SearchCriteria(
         job_title=search.job_title,
-        skills=list(search.skills or []),
         critical_skills=list(search.critical_skills or []),
         location=search.location,
         min_experience=search.min_experience or 0.0,
+        require_title_match=bool(search.require_title_match),
+        graduation_year_from=search.graduation_year_from,
+        graduation_year_to=search.graduation_year_to,
         keywords=list(search.keywords or []),
-        company=search.company,
+        companies=list(search.companies or []),
+        company_ids=list(search.company_ids or []),
         industry=search.industry,
         max_results=search.max_results,
         min_match_score=search.min_match_score or 0.0,
@@ -37,14 +41,17 @@ def criteria_from_search(search: Search) -> SearchCriteria:
 
 def create_search(db: Session, user_id: str, payload: SearchCreate) -> Search:
     search = Search(
-        user_id=uuid.UUID(str(user_id)),
+        user_id=as_user_uuid(user_id),
         job_title=payload.job_title,
-        skills=payload.skills,
         critical_skills=payload.critical_skills,
         location=payload.location,
         min_experience=payload.min_experience,
+        require_title_match=payload.require_title_match,
+        graduation_year_from=payload.graduation_year_from,
+        graduation_year_to=payload.graduation_year_to,
         keywords=payload.keywords,
-        company=payload.company,
+        companies=payload.companies,
+        company_ids=payload.company_ids,
         industry=payload.industry,
         max_results=payload.max_results,
         min_match_score=payload.min_match_score,
@@ -63,12 +70,12 @@ def create_search(db: Session, user_id: str, payload: SearchCreate) -> Search:
 def get_search(db: Session, user_id: str, search_id: uuid.UUID) -> Search | None:
     return db.scalar(
         select(Search).where(
-            Search.id == search_id, Search.user_id == uuid.UUID(str(user_id))
+            Search.id == search_id, Search.user_id == as_user_uuid(user_id)
         )
     )
 
 
-def _result_count(db: Session, search_id: uuid.UUID) -> int:
+def result_count(db: Session, search_id: uuid.UUID) -> int:
     return db.scalar(
         select(func.count(SearchResult.id)).where(SearchResult.search_id == search_id)
     ) or 0
@@ -76,14 +83,14 @@ def _result_count(db: Session, search_id: uuid.UUID) -> int:
 
 def to_search_read(db: Session, search: Search) -> SearchRead:
     read = SearchRead.model_validate(search)
-    read.result_count = _result_count(db, search.id)
+    read.result_count = result_count(db, search.id)
     return read
 
 
 def list_searches(db: Session, user_id: str, limit: int = 20) -> list[SearchRead]:
     searches = db.scalars(
         select(Search)
-        .where(Search.user_id == uuid.UUID(str(user_id)))
+        .where(Search.user_id == as_user_uuid(user_id))
         .order_by(Search.created_at.desc())
         .limit(limit)
     ).all()
@@ -108,7 +115,7 @@ def get_candidate(db: Session, candidate_id: uuid.UUID) -> Candidate | None:
 def save_candidate(
     db: Session, user_id: str, candidate_id: uuid.UUID, notes: str | None
 ) -> SavedCandidate:
-    uid = uuid.UUID(str(user_id))
+    uid = as_user_uuid(user_id)
     existing = db.scalar(
         select(SavedCandidate).where(
             SavedCandidate.user_id == uid, SavedCandidate.candidate_id == candidate_id
@@ -129,7 +136,7 @@ def save_candidate(
 def unsave_candidate(db: Session, user_id: str, candidate_id: uuid.UUID) -> bool:
     saved = db.scalar(
         select(SavedCandidate).where(
-            SavedCandidate.user_id == uuid.UUID(str(user_id)),
+            SavedCandidate.user_id == as_user_uuid(user_id),
             SavedCandidate.candidate_id == candidate_id,
         )
     )
@@ -143,7 +150,7 @@ def unsave_candidate(db: Session, user_id: str, candidate_id: uuid.UUID) -> bool
 def list_saved(db: Session, user_id: str) -> list[SavedCandidate]:
     return db.scalars(
         select(SavedCandidate)
-        .where(SavedCandidate.user_id == uuid.UUID(str(user_id)))
+        .where(SavedCandidate.user_id == as_user_uuid(user_id))
         .options(selectinload(SavedCandidate.candidate))
         .order_by(SavedCandidate.created_at.desc())
     ).all()
@@ -152,7 +159,7 @@ def list_saved(db: Session, user_id: str) -> list[SavedCandidate]:
 # --- Dashboard --------------------------------------------------------------
 
 def dashboard(db: Session, user_id: str) -> DashboardStats:
-    uid = uuid.UUID(str(user_id))
+    uid = as_user_uuid(user_id)
 
     total = db.scalar(select(func.count(Search.id)).where(Search.user_id == uid)) or 0
     completed = db.scalar(

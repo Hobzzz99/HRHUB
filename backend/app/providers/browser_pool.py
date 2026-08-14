@@ -89,6 +89,18 @@ class BrowserPool:
         browser = await self._ensure_browser()
         locale = settings.scrape_locale
         profile = self._profile()
+        if not settings.scrape_stealth:
+            # Plain Chromium: no spoofed hardware, no patched navigator. Slower
+            # to draw suspicion over many requests, but it is what a real
+            # browser looks like to a fingerprint check — which is what sign-in
+            # CAPTCHAs actually run.
+            logger.info("browser_context_without_stealth")
+            return await browser.new_context(
+                storage_state=storage_state,
+                locale=locale,
+                timezone_id=settings.scrape_timezone or None,
+            )
+
         context = await browser.new_context(
             storage_state=storage_state,
             **fingerprint.context_options(
@@ -115,6 +127,6 @@ class BrowserPool:
             if self._playwright:
                 try:
                     await self._playwright.stop()
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001 — best-effort teardown
                     pass
                 self._playwright = None

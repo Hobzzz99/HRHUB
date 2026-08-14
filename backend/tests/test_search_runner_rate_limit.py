@@ -152,3 +152,160 @@ def test_providers_without_a_budget_report_none(_provider):
         assert "budget_limit" not in search.progress
     finally:
         db.close()
+
+
+def test_strict_search_returns_nothing_when_nothing_qualifies(_provider):
+    """A stated requirement must be enforced, not quietly overridden.
+
+    Returning rejected candidates anyway reads as the filtering being broken,
+    and puts people in front of the recruiter who fail a requirement they set.
+    """
+    _provider(_BudgetedProvider(hits=5, budget=5))
+    db = SessionLocal()
+    try:
+        ensure_user(db, USER_ID, "dev@example.com")
+        db.commit()
+        search = search_service.create_search(
+            db,
+            USER_ID,
+            SearchCreate(
+                job_title="Backend Engineer",
+                keywords=["python"],
+                critical_skills=["kubernetes"],  # no fixture profile has this
+                max_results=5,
+                provider="linkedin",
+            ),
+        )
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        assert search.status == SearchStatus.COMPLETED
+        assert db.query(SearchResult).filter_by(search_id=search.id).count() == 0
+    finally:
+        db.close()
+
+
+def test_without_hard_requirements_a_search_still_returns_near_misses(_provider):
+    """No requirements stated, so an empty page would only be unhelpful."""
+    _provider(_BudgetedProvider(hits=3, budget=3))
+    db = SessionLocal()
+    try:
+        ensure_user(db, USER_ID, "dev@example.com")
+        db.commit()
+        search = search_service.create_search(
+            db,
+            USER_ID,
+            SearchCreate(
+                job_title="Astronaut",  # nothing will score well
+                keywords=["spacewalk"],
+                max_results=3,
+                min_match_score=0,
+                provider="linkedin",
+            ),
+        )
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        assert db.query(SearchResult).filter_by(search_id=search.id).count() == 3
+    finally:
+        db.close()
+
+
+def test_timing_is_reported(_provider):
+    _provider(_BudgetedProvider(hits=2, budget=2))
+    db = SessionLocal()
+    try:
+        search = _make_search(db, max_results=2)
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        progress = search.progress
+        assert progress["elapsed_seconds"] >= 0
+        assert progress["search_seconds"] >= 0
+        assert progress["seconds_per_profile"] >= 0
+        assert progress["returned"] == 2
+    finally:
+        db.close()
+
+
+class _FlakyProvider(_BudgetedProvider):
+    """Serves ``ok`` profiles, then raises an error nothing translates."""
+
+    def __init__(self, *, hits: int, ok: int) -> None:
+        super().__init__(hits=hits, budget=hits)
+        self._ok = ok
+
+    async def fetch_profile(self, hit: SearchHit) -> RawProfile:
+        if self.fetched >= self._ok:
+            # Exactly what Playwright raises on a navigation timeout: not a
+            # ProviderError, so nothing in the pipeline is expecting it.
+            raise TimeoutError("Page.goto: Timeout 30000ms exceeded")
+        return await super().fetch_profile(hit)
+
+
+def test_an_untranslated_error_does_not_discard_collected_profiles(_provider):
+    """The regression: a Playwright timeout binned everything already fetched.
+
+    Two real searches lost 10 profiles of scrape budget — and one lost two
+    genuine matches — because an error the provider did not wrap escaped before
+    results were stored.
+    """
+    _provider(_FlakyProvider(hits=10, ok=4))
+    db = SessionLocal()
+    try:
+        search = _make_search(db, max_results=10)
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        results = db.query(SearchResult).filter_by(search_id=search.id).all()
+        assert len(results) == 4, "profiles fetched before the failure must survive"
+    finally:
+        db.close()
+
+
+def test_a_run_that_only_fails_gives_up_instead_of_spending_the_budget(_provider):
+    _provider(_FlakyProvider(hits=20, ok=0))
+    db = SessionLocal()
+    try:
+        search = _make_search(db, max_results=20)
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        # Stops at the failure limit rather than opening all twenty.
+        assert search.progress["processed"] == 3
+    finally:
+        db.close()
+
+
+def test_a_title_only_search_runs_and_returns_ranked_results(_provider):
+    """Every optional field left blank: no keywords, no criticals, no location.
+
+    Nothing is then a hard requirement, so the run must still return a ranked
+    list rather than an empty page.
+    """
+    _provider(_BudgetedProvider(hits=4, budget=4))
+    db = SessionLocal()
+    try:
+        ensure_user(db, USER_ID, "dev@example.com")
+        db.commit()
+        search = search_service.create_search(
+            db,
+            USER_ID,
+            SearchCreate(
+                job_title="Backend Engineer",
+                max_results=4,
+                min_match_score=0,
+                provider="linkedin",
+            ),
+        )
+        asyncio.run(search_runner.execute_search(search.id))
+
+        db.refresh(search)
+        assert search.status == SearchStatus.COMPLETED
+        results = db.query(SearchResult).filter_by(search_id=search.id).all()
+        assert len(results) == 4
+        # Scored on the one thing that was stated.
+        assert all(r.score_breakdown["title"] > 0 for r in results)
+        assert all(r.matched_keywords == [] for r in results)
+    finally:
+        db.close()

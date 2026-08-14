@@ -19,6 +19,20 @@ from app.core.config import settings
 from app.providers.base import CandidateProvider
 from app.providers.mock import MockProvider
 
+#: Provider names that drive a browser we sign into, and so need a stored
+#: session and a fingerprint seed. Callers branch on this rather than repeating
+#: the names, so adding a scraping provider is one edit here.
+SCRAPING_PROVIDERS = ("playwright", "linkedin", "indeed")
+
+#: Which platform a scraping provider signs in to. The provider-account row
+#: and the hourly budget are both per-platform, so LinkedIn and Indeed keep
+#: separate sessions, separate fingerprints and separate limits.
+SCRAPING_PLATFORM = {
+    "playwright": "linkedin",
+    "linkedin": "linkedin",
+    "indeed": "indeed",
+}
+
 
 def get_provider(name: str | None = None, **kwargs) -> CandidateProvider:
     """Return a provider instance for ``name`` (defaults to the configured one)."""
@@ -34,7 +48,14 @@ def get_provider(name: str | None = None, **kwargs) -> CandidateProvider:
 
         return ApifyLinkedInProvider(**kwargs)
 
-    if provider_name in ("playwright", "linkedin"):
+    if provider_name == "indeed":
+        # Lazily imported for the same reason as the LinkedIn branch: the API
+        # image need not carry Playwright.
+        from app.providers.indeed import IndeedProvider
+
+        return IndeedProvider(**kwargs)
+
+    if provider_name in SCRAPING_PROVIDERS:
         # Imported lazily so the API image needn't carry Playwright, and so a
         # misconfigured scraping setup can't break the default mock path.
         # "linkedin" is the user-facing name; "playwright" names the mechanism.

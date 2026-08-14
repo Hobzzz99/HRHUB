@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models import Candidate
 from app.domain import experience as experience_mod
 from app.domain.models import EducationItem, ExperienceItem, RawProfile
-from app.db.models import Candidate
 
 
 def get_fresh_candidate(
@@ -25,10 +25,10 @@ def get_fresh_candidate(
     )
     if candidate is None:
         return None
-    cutoff = datetime.now(timezone.utc) - timedelta(days=ttl)
+    cutoff = datetime.now(UTC) - timedelta(days=ttl)
     fetched = candidate.fetched_at
     if fetched.tzinfo is None:
-        fetched = fetched.replace(tzinfo=timezone.utc)
+        fetched = fetched.replace(tzinfo=UTC)
     return candidate if fetched >= cutoff else None
 
 
@@ -64,7 +64,7 @@ def upsert_candidate(db: Session, raw: RawProfile) -> Candidate:
     candidate.total_experience_years = total_years
     candidate.profile_picture_url = raw.profile_picture_url
     candidate.raw = raw.raw
-    candidate.fetched_at = datetime.now(timezone.utc)
+    candidate.fetched_at = datetime.now(UTC)
 
     db.flush()
     return candidate

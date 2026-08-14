@@ -19,9 +19,17 @@ from app.db.enums import SearchStatus
 from app.db.session import SessionLocal, get_db
 from app.schemas.search import SearchCreate, SearchRead, SearchResultRead
 from app.services import search_service
+from app.workers import routing
 from app.workers.tasks import run_search
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+#: How often the live stream re-reads the search row, and how long it keeps
+#: doing so before hanging up, so a stuck job cannot hold the connection open
+#: forever. NOTE: a scrape-backed search runs 30-60s per profile, so a full
+#: 20-profile run outlives this window and the client must reconnect.
+_STREAM_POLL_INTERVAL_S = 1.0
+_STREAM_MAX_DURATION_S = 600
 
 
 @router.post("", response_model=SearchRead, status_code=status.HTTP_202_ACCEPTED)
@@ -30,9 +38,11 @@ def create_search(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_authed_user),
 ) -> SearchRead:
-    """Create a search and queue the background job."""
+    """Create a search and queue the background job on the owner's own worker."""
     search = search_service.create_search(db, user.id, payload)
-    run_search.delay(str(search.id))
+    # Routed rather than broadcast: scraping uses this recruiter's own LinkedIn
+    # session, signed in by hand on their own machine. See workers/routing.py.
+    run_search.apply_async(args=[str(search.id)], queue=routing.user_queue(user.id))
     return search_service.to_search_read(db, search)
 
 
@@ -83,8 +93,7 @@ async def stream_search(
 
     async def event_generator():
         last_payload: str | None = None
-        # Cap total lifetime so a stuck job can't hold the connection forever.
-        for _ in range(600):
+        for _ in range(int(_STREAM_MAX_DURATION_S / _STREAM_POLL_INTERVAL_S)):
             if await request.is_disconnected():
                 break
             db = SessionLocal()
@@ -97,7 +106,7 @@ async def stream_search(
                     {
                         "status": search.status,
                         "progress": search.progress or {},
-                        "result_count": search_service._result_count(db, search.id),
+                        "result_count": search_service.result_count(db, search.id),
                         "error": search.error,
                     }
                 )
@@ -110,7 +119,7 @@ async def stream_search(
                 last_payload = payload
             if terminal:
                 return
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_STREAM_POLL_INTERVAL_S)
 
     return EventSourceResponse(event_generator())
 
@@ -135,8 +144,8 @@ def export_results(
             "location": r.candidate.location,
             "experience_years": r.candidate.total_experience_years,
             "match_score": r.match_score,
-            "matched_skills": ", ".join(r.matched_skills or []),
-            "missing_skills": ", ".join(r.missing_skills or []),
+            "matched_keywords": ", ".join(r.matched_keywords or []),
+            "missing_keywords": ", ".join(r.missing_keywords or []),
             "profile_url": r.candidate.source_profile_url,
         }
         for r in results
