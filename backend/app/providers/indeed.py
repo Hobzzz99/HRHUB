@@ -96,6 +96,7 @@ class IndeedProvider(CandidateProvider):
         fingerprint_seed: str | None = None,
         limiter: SlidingWindowLimiter | None = None,
     ) -> None:
+        super().__init__()
         self._session_state = session_state
         self._on_session_update = on_session_update
         self._pool: BrowserPool | None = None

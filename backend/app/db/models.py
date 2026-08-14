@@ -140,6 +140,14 @@ class Search(Base, TimestampMixin):
     )
     progress: Mapped[dict] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
+    #: What the run could not do, when it still produced results — a filter that
+    #: never reached LinkedIn, a constraint released to widen a thin search,
+    #: profiles that would not open. Distinct from `error`, which means the run
+    #: did not finish at all.
+    #:
+    #: Its absence is the reason a broken scraper and a genuinely empty market
+    #: were shown to recruiters as the same sentence.
+    degraded_reasons: Mapped[list | None] = mapped_column(JSON)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="searches")

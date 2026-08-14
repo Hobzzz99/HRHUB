@@ -63,6 +63,7 @@ from app.providers import search_plan, window
 from app.providers.base import (
     AccountRestrictedError,
     CandidateProvider,
+    Degradation,
     ProfileUnavailableError,
     ProviderError,
     SessionCallback,
@@ -71,6 +72,7 @@ from app.providers.browser_pool import BrowserPool
 from app.providers.company_filter import (
     COMPANY,
     CompanyIdCache,
+    Facet,
     apply_facet,
 )
 from app.providers.human import HumanActor
@@ -157,6 +159,7 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         limiter: SlidingWindowLimiter | None = None,
         fingerprint_seed: str | None = None,
     ) -> None:
+        super().__init__()
         self._session_state = session_state
         self._on_session_update = on_session_update
         # Pins the machine this account presents. Stable per account, distinct
@@ -542,6 +545,14 @@ class PlaywrightLinkedInProvider(CandidateProvider):
                 wanted=criteria.max_results,
                 remaining=search_plan.describe(steps),
             )
+            # search_plan.relax exists so this decision "can be reported rather
+            # than silently changing what the recruiter asked for". Until now
+            # the report went only to the log.
+            self.degraded(
+                Degradation.FILTER_RELAXED,
+                f"Only {found} results with every filter applied, so the "
+                f"{given_up.label} filter was released to widen the search.",
+            )
             facets = {
                 param: ids
                 for param, ids in facets.items()
@@ -578,12 +589,30 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         except Exception as exc:  # noqa: BLE001 — fall back, never fail the search
             await self._dump_debug(page, f"{facet.name}-filter")
             logger.warning("facet_failed", facet=facet.name, error=str(exc)[:160])
+            self._filter_not_applied(facet, values)
             return []
 
         if not resolved:
             await self._dump_debug(page, f"{facet.name}-filter")
             logger.info("facet_unavailable_falling_back", facet=facet.name)
+            self._filter_not_applied(facet, values)
         return resolved
+
+    def _filter_not_applied(self, facet: Facet, values: list[str]) -> None:
+        """Record that a filter the recruiter set never reached LinkedIn.
+
+        Falling back to an unfiltered search is the right call — a narrower
+        answer is better than none. Doing it *silently* is not: the run then
+        spends its whole hourly budget on people who do not qualify, they are
+        all rejected by the post-fetch check, and the recruiter is shown "No
+        candidates matched" for a search that was never actually filtered.
+        """
+        wanted = ", ".join(values) if values else facet.name
+        self.degraded(
+            Degradation.FILTER_NOT_APPLIED,
+            f"LinkedIn's {facet.name} filter could not be applied, so results are "
+            f"not restricted to {wanted}.",
+        )
 
     async def search(self, criteria: SearchCriteria) -> list[SearchHit]:
         page, actor = await self._get_page()
@@ -623,6 +652,20 @@ class PlaywrightLinkedInProvider(CandidateProvider):
 
             found = await self._extract_hits(page)
             if not found:
+                # On page one this is almost never "LinkedIn has nobody". It is
+                # the results list not rendering, or an auth wall served with a
+                # 200 — and reported as an ordinary empty search it reads to the
+                # recruiter as a market with no candidates in it. Later pages
+                # ending is just the end of the results.
+                if page_num == 1:
+                    shot = await self._dump_debug(page, "search-no-results")
+                    logger.warning("linkedin_search_extracted_nothing", url=page.url[:200])
+                    self.degraded(
+                        Degradation.NO_RESULTS_EXTRACTED,
+                        "LinkedIn's results list could not be read. This usually means "
+                        "the page did not finish loading rather than that nobody "
+                        f"matched. Diagnostic: {shot}.",
+                    )
                 break
             for hit in found:
                 hits.setdefault(hit.source_profile_url, hit)

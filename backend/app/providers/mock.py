@@ -28,6 +28,7 @@ class MockProvider(CandidateProvider):
     name = "mock"
 
     def __init__(self) -> None:
+        super().__init__()
         self._profiles = {p.source_profile_url: p for p in _load_fixtures()}
 
     async def search(self, criteria: SearchCriteria) -> list[SearchHit]:

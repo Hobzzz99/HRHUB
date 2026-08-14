@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from enum import StrEnum
 
 from app.domain.models import RawProfile, SearchCriteria, SearchHit
 
@@ -39,11 +40,64 @@ class AccountRestrictedError(RuntimeError):
     """
 
 
+class Degradation(StrEnum):
+    """A thing the provider was asked to do and could not.
+
+    These are not errors — the run continued and produced results. They are the
+    reasons those results answer a *different question* than the one asked, and
+    the recruiter has to be told which.
+
+    Every one of these has already happened in production and been reported to
+    the recruiter as "No candidates matched. Try lowering the minimum score."
+    """
+
+    #: A requested filter never reached the platform, so the results are not
+    #: restricted the way the recruiter asked. The expensive one: the search
+    #: spends its whole budget on people who are then all rejected.
+    FILTER_NOT_APPLIED = "filter_not_applied"
+    #: The search returned so little that a constraint was released to widen it.
+    FILTER_RELAXED = "filter_relaxed"
+    #: The results list produced no cards at all — usually the page not
+    #: rendering rather than the platform genuinely having nobody.
+    NO_RESULTS_EXTRACTED = "no_results_extracted"
+    #: Profiles opened but came back without the fields scoring depends on.
+    PROFILES_INCOMPLETE = "profiles_incomplete"
+    #: Profiles could not be opened at all.
+    PROFILES_UNREACHABLE = "profiles_unreachable"
+    #: The hourly budget ran out part-way, so this is a partial answer.
+    BUDGET_EXHAUSTED = "budget_exhausted"
+
+
 class CandidateProvider(ABC):
     """Abstract candidate source."""
 
     #: Short identifier stored on candidates (e.g. "mock", "linkedin").
     name: str = "base"
+
+    @property
+    def degradations(self) -> list[tuple[Degradation, str]]:
+        """What this run could not do, created on first use.
+
+        Lazy rather than set in ``__init__`` so that a provider which does not
+        chain to this constructor — every existing one, and any test double —
+        still reports rather than raising ``AttributeError`` from inside the
+        pipeline's ``finally`` block, where it would mask the real failure.
+        Held per instance, so no list is ever shared between runs.
+        """
+        existing = self.__dict__.get("_degradations")
+        if existing is None:
+            existing = []
+            self.__dict__["_degradations"] = existing
+        return existing
+
+    def degraded(self, kind: Degradation, detail: str) -> None:
+        """Record that the run could not do something it was asked to.
+
+        Providers call this instead of staying silent. The runner reads it after
+        the search and stores it, so the difference between "nobody matched" and
+        "we could not apply your filter" survives all the way to the screen.
+        """
+        self.degradations.append((kind, detail))
 
     @abstractmethod
     async def search(self, criteria: SearchCriteria) -> list[SearchHit]:

@@ -59,6 +59,11 @@ class SearchRead(BaseModel):
     status: str
     progress: dict
     error: str | None
+    #: Present when the run finished but could not do everything it was asked —
+    #: a filter that never reached the platform, profiles that would not open.
+    #: The UI must say so rather than showing the ordinary "nobody matched"
+    #: message, which blames the recruiter's criteria for a scraper problem.
+    degraded_reasons: list[dict] | None = None
     result_count: int = 0
     created_at: datetime
     completed_at: datetime | None

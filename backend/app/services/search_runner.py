@@ -22,7 +22,12 @@ from app.domain.filtering import apply_filters
 from app.domain.models import ScoredCandidate, SearchCriteria
 from app.domain.prefilter import passes_prefilter
 from app.domain.scoring import score_candidate
-from app.providers.base import AccountRestrictedError, CandidateProvider, ProviderError
+from app.providers.base import (
+    AccountRestrictedError,
+    CandidateProvider,
+    Degradation,
+    ProviderError,
+)
 from app.providers.factory import (
     SCRAPING_PLATFORM,
     SCRAPING_PROVIDERS,
@@ -33,11 +38,42 @@ from app.services import candidate_service, provider_account_service, search_ser
 
 logger = get_logger(__name__)
 
-#: Give up when this many profiles in a row fail for reasons we did not expect
-#: and nothing has been kept. Past this point the run is almost certainly broken
-#: (session gone, network down, layout changed) and continuing only spends
-#: scrape budget that takes an hour to come back.
+#: Give up when this many profiles **in a row** fail. Past this point the run is
+#: almost certainly broken (session gone, network down, layout changed) and
+#: continuing only spends scrape budget that takes an hour to come back.
+#:
+#: Genuinely consecutive: the counter resets on every profile that works. The
+#: previous version compared a cumulative total and only fired while nothing had
+#: been kept, so a single successful profile disabled the brake for the rest of
+#: the run — and a session that expired at profile two spent the other eighteen
+#: slots failing, then reported the search as completed with no results.
 _CONSECUTIVE_FAILURE_LIMIT = 3
+
+#: Rejection reasons carry one candidate's particulars — "Only 3 yrs experience",
+#: "Works at AMSG, not Deloitte / PwC" — so grouping the raw strings gives every
+#: candidate their own bucket and tells the recruiter nothing. These map each
+#: reason to the shape of the complaint.
+#:
+#: A table rather than a regex because the reasons all come from one module
+#: (`domain/filtering.py`) and are known: guessing at their structure produced
+#: "2x Works", which is worse than not summarising at all. An unrecognised
+#: reason keeps its own text, so a new filter degrades to verbose, never wrong.
+_REJECTION_LABELS: tuple[tuple[str, str], ...] = (
+    ("Only ", "not enough experience"),
+    ("Missing critical skills", "missing a required qualification"),
+    ("Works at ", "works at a different employer"),
+    ("No experience in", "no evidence of this line of work"),
+    ("Score ", "scored below your threshold"),
+    ("Location does not match", "outside the requested location"),
+    ("Graduated ", "outside the graduation-year window"),
+)
+
+
+def _rejection_label(reason: str) -> str:
+    for prefix, label in _REJECTION_LABELS:
+        if reason.startswith(prefix):
+            return label
+    return reason.strip()
 
 
 def _set_progress(db: Session, search: Search, **changes) -> None:
@@ -148,8 +184,52 @@ class _Collection:
         self.kept: list[tuple[uuid.UUID, ScoredCandidate]] = []
         self.all_scored: list[tuple[uuid.UUID, ScoredCandidate]] = []
         self.failures: list[str] = []
+        #: Reset by every profile that works, so the brake measures a run that
+        #: has stopped working rather than one that has ever failed.
+        self.consecutive_failures = 0
         self.processed = 0
         self.restricted: AccountRestrictedError | None = None
+        #: Reasons the results answer a different question than the one asked.
+        self.degradations: list[tuple[str, str]] = []
+        #: Why filtered-out candidates were filtered out, so an empty shortlist
+        #: can explain itself.
+        self.rejections: list[str] = []
+
+
+def _record_failure(db: Session, search: Search, run: _Collection, error: str) -> bool:
+    """Note a profile that could not be read. True when the run should stop.
+
+    Every failure here has already cost a slot of an hourly budget that takes an
+    hour to refill, so the point of stopping is not tidiness — it is to leave the
+    recruiter something to re-run with.
+    """
+    run.failures.append(error)
+    run.consecutive_failures += 1
+    if run.consecutive_failures < _CONSECUTIVE_FAILURE_LIMIT:
+        return False
+
+    logger.error(
+        "search_abandoned_after_repeated_failures",
+        consecutive=run.consecutive_failures,
+        kept=len(run.kept),
+    )
+    run.degradations.append(
+        (
+            Degradation.PROFILES_UNREACHABLE.value,
+            f"{run.consecutive_failures} profiles in a row could not be opened, so "
+            "the search stopped early. This is a problem reading LinkedIn, not "
+            "your criteria.",
+        )
+    )
+    _set_progress(
+        db,
+        search,
+        processed=run.processed,
+        kept=len(run.kept),
+        failed_profiles=len(run.failures),
+        note=f"Stopped after {run.consecutive_failures} profiles in a row failed to load.",
+    )
+    return True
 
 
 async def _score_one(
@@ -174,9 +254,20 @@ async def _score_one(
     )
     scored = await _maybe_ai_enhance(scored, profile, criteria)
 
+    # This profile worked, so the run is not stuck. Reset before recording the
+    # outcome: a candidate the filters reject is still a profile we read fine.
+    run.consecutive_failures = 0
+
     run.all_scored.append((candidate.id, scored))
-    if apply_filters(profile, scored, criteria).keep:
+    decision = apply_filters(profile, scored, criteria)
+    if decision.keep:
         run.kept.append((candidate.id, scored))
+    else:
+        # Kept so the recruiter can be told *why* nobody survived. Without this
+        # the only record of "8 rejected for employer, 2 for the credential" is
+        # discarded, and an over-tight search is indistinguishable from a broken
+        # scraper.
+        run.rejections.extend(decision.reasons)
 
 
 async def _collect(
@@ -244,9 +335,17 @@ async def _collect(
                 )
                 return
             except ProviderError as exc:
+                # A profile we could not open or read. Skipping one is ordinary;
+                # skipping several in a row is systemic — an expired session, a
+                # layout change — and each one has *already* spent a budget slot
+                # before failing. This used to be logged and forgotten, which is
+                # how a session that expired mid-run burned the remaining budget
+                # and still reported the search as completed.
                 logger.warning(
                     "profile_skipped", url=hit.source_profile_url, error=str(exc)
                 )
+                if _record_failure(db, search, run, str(exc)):
+                    return
             except Exception as exc:  # noqa: BLE001 — reason below
                 # Anything the provider did not translate: navigation timeouts,
                 # aborted requests, a page that vanished mid-read. These are the
@@ -258,18 +357,7 @@ async def _collect(
                     error=str(exc),
                     exc_info=True,
                 )
-                run.failures.append(str(exc))
-                if len(run.failures) >= _CONSECUTIVE_FAILURE_LIMIT and not run.kept:
-                    # Nothing is working. Stop rather than spend the rest of an
-                    # hourly budget repeating one failure against every profile.
-                    logger.error("search_abandoned_after_repeated_failures")
-                    _set_progress(
-                        db,
-                        search,
-                        processed=run.processed,
-                        kept=0,
-                        note=f"Stopped after {len(run.failures)} profiles failed to load.",
-                    )
+                if _record_failure(db, search, run, str(exc)):
                     return
             _set_progress(
                 db,
@@ -294,8 +382,16 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
     try:
         await _collect(db, search, criteria, provider, run, started)
     finally:
+        # Whatever the provider could not do, collected even on the failure path
+        # — a run that died half-way still has to explain what it managed.
+        run.degradations.extend(
+            (kind.value, detail) for kind, detail in provider.degradations
+        )
         stored = _results_to_store(criteria, run.kept, run.all_scored)
         _store_results(db, search, stored)
+        search.degraded_reasons = [
+            {"kind": kind, "detail": detail} for kind, detail in run.degradations
+        ] or None
 
         elapsed = time.monotonic() - started
         _set_progress(
@@ -307,6 +403,8 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
             ),
             returned=len(stored[: search.max_results]),
             failed_profiles=len(run.failures) or None,
+            rejected=len(run.all_scored) - len(run.kept) or None,
+            rejection_reasons=_top_rejections(run.rejections),
         )
         logger.info(
             "search_timing",
@@ -321,6 +419,25 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
     # cost the operator the rest of the run, not the profiles already paid for.
     if run.restricted is not None:
         raise run.restricted
+
+
+def _top_rejections(reasons: list[str], limit: int = 4) -> list[str] | None:
+    """The commonest reasons candidates were filtered out, most frequent first.
+
+    This is what turns "No candidates matched" into "8 works at a different
+    employer, 2 missing a required qualification" — the difference between a
+    recruiter guessing at their criteria and knowing which one to loosen.
+    """
+    if not reasons:
+        return None
+
+    counts: dict[str, int] = {}
+    for reason in reasons:
+        label = _rejection_label(reason)
+        counts[label] = counts.get(label, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
+    return [f"{count}x {label}" for label, count in ranked]
 
 
 def _has_hard_requirements(criteria: SearchCriteria) -> bool:

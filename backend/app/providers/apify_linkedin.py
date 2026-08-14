@@ -55,6 +55,7 @@ class ApifyLinkedInProvider(CandidateProvider):
     name = "linkedin"
 
     def __init__(self, *, token: str | None = None) -> None:
+        super().__init__()
         self._token = token or settings.apify_token
         self._client: httpx.AsyncClient | None = None
         # Profiles the search actor returned inline, keyed by URL, so fetch_profile
