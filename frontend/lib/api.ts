@@ -61,8 +61,30 @@ export const api = {
     }),
   unsaveCandidate: (candidateId: string) =>
     request<void>(`/candidate/save/${candidateId}`, { method: "DELETE" }),
-  exportUrl: (id: string, fmt: "csv" | "json" = "csv") =>
-    `${API_URL}/search/${id}/export?fmt=${fmt}`,
+  /**
+   * Download the results as a file.
+   *
+   * Fetched rather than linked to. An `<a href>` cannot carry the bearer token,
+   * so with auth on the export endpoint answered `{"detail":"Not authenticated"}`
+   * — and the browser rendered that JSON in place of the app, which reads as
+   * the tool being broken rather than as a download failing.
+   */
+  exportResults: async (id: string, fmt: "csv" | "json" = "csv") => {
+    const token = await getAccessToken();
+    const res = await fetch(`${API_URL}/search/${id}/export?fmt=${fmt}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, "Could not export these results.");
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `talentfinder-${id}.${fmt}`;
+    link.click();
+    // Without this the blob is held for the life of the document.
+    URL.revokeObjectURL(url);
+  },
   getProviderAccount: (provider: string) =>
     request<ProviderAccount | null>(`/provider-account/${provider}`),
   rotateProviderAccount: (provider: string) =>

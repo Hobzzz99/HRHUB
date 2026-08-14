@@ -47,6 +47,20 @@ export default function SearchResultsPage() {
       ? `${rejected} ${rejected === 1 ? "profile was" : "profiles were"} reviewed and filtered out — ${reasons.join(", ")}.`
       : null;
 
+  const [exporting, setExporting] = React.useState(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
+  const onExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await api.exportResults(id, "csv");
+    } catch {
+      setExportError("Could not export these results. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -67,13 +81,25 @@ export default function SearchResultsPage() {
           )}
         </div>
         {completed && (resultsQuery.data?.length ?? 0) > 0 ? (
-          <a href={api.exportUrl(id, "csv")}>
-            <Button variant="outline">
-              <Download className="size-4" /> Export CSV
-            </Button>
-          </a>
+          <Button variant="outline" onClick={onExport} disabled={exporting}>
+            <Download className="size-4" />
+            {exporting ? "Exporting…" : "Export CSV"}
+          </Button>
         ) : null}
       </div>
+
+      {exportError ? (
+        <p className="text-sm text-destructive">{exportError}</p>
+      ) : null}
+
+      {/* Losing sight of a search is not the same as a search taking a while,
+          and a spinner cannot tell the recruiter which one is happening. */}
+      {stream.unreachable ? (
+        <p className="text-sm text-destructive">
+          Lost contact with the server, so this page has stopped updating. The
+          search itself may still be running — reload to check.
+        </p>
+      ) : null}
 
       <SearchProgress
         status={stream.status}
