@@ -119,8 +119,13 @@ first request.
 
 ```bash
 docker compose -f docker-compose.prod.yml ps            # all healthy?
-curl -sf https://your-domain/api/health && echo OK
+curl -sf https://your-domain/api/ready && echo READY
 ```
+
+Use `/ready`, not `/health`. Liveness answers 200 whatever the database is
+doing — by design, so a blip does not get the process killed — which makes it
+useless as a deploy gate. `/ready` checks Postgres and Redis and returns 503
+when either is down, and it is what the compose healthcheck uses too.
 
 ### 1.5 Backups — now, not later
 

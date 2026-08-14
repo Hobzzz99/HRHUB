@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     scrape_rate_limit_max_wait_s: int = 600
     # Where the rolling window is persisted (relative to the worker's cwd).
     scrape_state_dir: str = "_state"
+    # Hard ceiling on one search, enforced by Celery from outside the task.
+    # Generous: 20 profiles at ~30-60s each, plus up to 10 minutes asleep on the
+    # rate limiter, is legitimately slow. But a run with no ceiling at all holds
+    # a solo-pool worker forever, and that worker is one recruiter's entire
+    # queue — so a single hung navigation stops them working for the day.
+    scrape_task_time_limit_s: int = 3600
+    # How long a search may sit in `running` before the sweep calls it dead.
+    # Longer than the task limit so a task that is merely slow is never
+    # reaped out from under itself.
+    stale_search_after_s: int = 4200
 
     # --- Manual login / challenge handling ---
     # Login is done BY HAND in the browser window: no credentials are typed by
