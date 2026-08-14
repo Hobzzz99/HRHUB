@@ -608,11 +608,22 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         candidates matched" for a search that was never actually filtered.
         """
         wanted = ", ".join(values) if values else facet.name
-        self.degraded(
-            Degradation.FILTER_NOT_APPLIED,
-            f"LinkedIn's {facet.name} filter could not be applied, so results are "
-            f"not restricted to {wanted}.",
+        detail = (
+            f"LinkedIn's {facet.name} filter could not be applied, so these results "
+            f"are not restricted to {wanted}."
         )
+        if facet is COMPANY:
+            # There is a reliable way round this that takes the recruiter ten
+            # seconds, and it is worth more than an apology: LinkedIn resolves
+            # the firms itself, so the pasted ids cannot pick the wrong entity —
+            # "KPMG" and "KPMG Middle East" are different companies with
+            # different ids.
+            detail += (
+                " To filter reliably: run this search on LinkedIn, tick the firms "
+                "under Current companies, and paste that page's URL into the "
+                '"paste a LinkedIn search URL" box on the search form.'
+            )
+        self.degraded(Degradation.FILTER_NOT_APPLIED, detail)
 
     async def search(self, criteria: SearchCriteria) -> list[SearchHit]:
         page, actor = await self._get_page()

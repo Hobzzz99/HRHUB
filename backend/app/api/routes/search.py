@@ -108,6 +108,10 @@ async def stream_search(
                         "progress": search.progress or {},
                         "result_count": search_service.result_count(db, search.id),
                         "error": search.error,
+                        # Both stream shapes must carry this or the UI silently
+                        # falls back to "no candidates matched" for a run whose
+                        # filters never applied.
+                        "degraded_reasons": search.degraded_reasons,
                     }
                 )
                 terminal = SearchStatus(search.status).is_terminal

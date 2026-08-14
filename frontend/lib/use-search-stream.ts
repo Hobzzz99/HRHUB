@@ -4,13 +4,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, API_URL } from "./api";
 import { AUTH_DISABLED } from "./supabase";
-import type { SearchProgress, SearchStatus } from "./types";
+import type { Degradation, SearchProgress, SearchStatus } from "./types";
 
 export interface StreamState {
   status: SearchStatus;
   progress: SearchProgress;
   result_count: number;
   error: string | null;
+  /** Carried on the live stream rather than read from the initial fetch: the
+   *  page loads while the search is still queued, so a copy taken then always
+   *  says nothing was degraded — which is how a search whose company filter
+   *  never applied still showed the ordinary "no candidates" message. */
+  degraded_reasons: Degradation[] | null;
 }
 
 const isTerminal = (s: SearchStatus) => s === "completed" || s === "failed";
@@ -26,6 +31,7 @@ export function useSearchStream(searchId: string, initialStatus: SearchStatus) {
     progress: {},
     result_count: 0,
     error: null,
+    degraded_reasons: null,
   });
   const settled = useRef(false);
 
@@ -56,6 +62,7 @@ export function useSearchStream(searchId: string, initialStatus: SearchStatus) {
             progress: s.progress,
             result_count: s.result_count,
             error: s.error,
+            degraded_reasons: s.degraded_reasons,
           });
           if (isTerminal(s.status)) {
             settled.current = true;

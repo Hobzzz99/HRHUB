@@ -109,9 +109,14 @@ LOCATION = Facet(
 
 _TYPEAHEAD_FALLBACK = ('div[role="dialog"] input[role="combobox"]',)
 _OPTION = ('[role="option"]',)
+#: The panel's confirm button. Its label sits in a `<span>` inside a
+#: `div[role="button"]`, so a selector naming the `button` tag matches nothing —
+#: the same fault that stopped the pill itself being found. Role-based first,
+#: tag-based kept last as a fallback if LinkedIn ever ships real buttons.
 _APPLY = (
+    '[role="button"]:has-text("Show results")',
+    '[aria-label*="Apply current filter" i]',
     'button:has-text("Show results")',
-    'button[aria-label*="Apply current filter" i]',
 )
 _ID_DIGITS = re.compile(r"\d+")
 

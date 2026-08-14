@@ -34,7 +34,9 @@ export default function SearchResultsPage() {
   const savedIds = new Set((savedQuery.data ?? []).map((s) => s.candidate.id));
 
   const search = metaQuery.data;
-  const degraded = search?.degraded_reasons ?? [];
+  // From the stream, not the initial fetch: that fetch happens while the
+  // search is still queued, so its copy always says nothing went wrong.
+  const degraded = stream.degraded_reasons ?? [];
 
   // "10 reviewed, 8 of them work at a different employer" tells a recruiter
   // which filter to loosen. "Try lowering the minimum score" makes them guess.

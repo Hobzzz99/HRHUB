@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { CriticalSkillsExplainer } from "@/components/critical-skills-explainer";
 import { TagInput } from "@/components/ui/tag-input";
 
 /** Kept in step with BIG_FOUR in the backend's domain/companies.py. */
@@ -185,17 +186,20 @@ export function SearchForm() {
 
           <Field
             label="Critical skills (optional)"
-            hint="Pass/fail, not scored. Anyone without these is discarded — checked against titles, skills and certifications. Leave blank to filter on nothing."
+            hint="Pass/fail, not scored. Anyone without these is discarded — checked against titles, skills, certifications and the name. Leave blank to filter on nothing."
           >
             <Controller
               control={control}
               name="critical_skills"
               render={({ field }) => (
-                <TagInput
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="Must-have skills…"
-                />
+                <>
+                  <TagInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="e.g. CPA / ACCA / ESAA"
+                  />
+                  <CriticalSkillsExplainer terms={field.value} />
+                </>
               )}
             />
           </Field>
