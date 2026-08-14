@@ -14,31 +14,52 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
 
+/** Kept in step with BIG_FOUR in the backend's domain/companies.py. */
+const BIG_FOUR = ["Deloitte", "PwC", "EY", "KPMG"] as const;
+
+/**
+ * Pull LinkedIn's company ids out of a search URL, e.g.
+ * `?currentCompany=%5B"9499295"%2C"1073"%5D` -> ["9499295", "1073"].
+ * Used when the filter panel cannot be driven — LinkedIn has already resolved
+ * these, so they cannot pick the wrong company entity.
+ */
+function companyIdsFromUrl(url: string): string[] {
+  const match = /currentCompany=([^&]+)/.exec(url);
+  if (!match) return [];
+  return decodeURIComponent(match[1]).match(/\d+/g) ?? [];
+}
+
 const schema = z.object({
   job_title: z.string().min(1, "Job title is required"),
-  skills: z.array(z.string()),
+  keywords: z.array(z.string()),
   critical_skills: z.array(z.string()),
   location: z.string(),
   min_experience: z.coerce.number().min(0).max(50),
-  keywords: z.array(z.string()),
-  company: z.string(),
+  require_title_match: z.boolean(),
+  graduation_year_from: z.string(),
+  graduation_year_to: z.string(),
+  companies: z.array(z.string()),
+  company_ids: z.array(z.string()),
   industry: z.string(),
   max_results: z.coerce.number().min(1).max(200),
   min_match_score: z.coerce.number().min(0).max(100),
   enforce_location: z.boolean(),
-  provider: z.enum(["mock", "linkedin"]),
+  provider: z.enum(["mock", "linkedin", "indeed"]),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 const defaults: FormValues = {
   job_title: "",
-  skills: [],
+  keywords: [],
   critical_skills: [],
   location: "",
   min_experience: 0,
-  keywords: [],
-  company: "",
+  require_title_match: true,
+  graduation_year_from: "",
+  graduation_year_to: "",
+  companies: [],
+  company_ids: [],
   industry: "",
   max_results: 25,
   min_match_score: 40,
@@ -80,7 +101,12 @@ export function SearchForm() {
     const search = await createSearch.mutateAsync({
       ...values,
       location: values.location || null,
-      company: values.company || null,
+      graduation_year_from: values.graduation_year_from
+        ? Number(values.graduation_year_from)
+        : null,
+      graduation_year_to: values.graduation_year_to
+        ? Number(values.graduation_year_to)
+        : null,
       industry: values.industry || null,
     });
     router.push(`/search/${search.id}`);
@@ -91,17 +117,18 @@ export function SearchForm() {
       <form onSubmit={onSubmit} className="space-y-5">
           <Field
             label="Data source"
-            hint="LinkedIn opens a real browser window on the server — sign in and clear any CAPTCHA yourself. Capped at 20 profiles per hour. Demo data runs on fixtures, no network."
+            hint="LinkedIn and Indeed each open a real browser window on the server — you sign in yourself, and each platform has its own 20-per-hour cap and its own stored session. Indeed needs an employer account with a Resume subscription. Demo data runs on fixtures, no network."
           >
             <Controller
               control={control}
               name="provider"
               render={({ field }) => (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {(
                     [
                       { value: "mock", label: "Demo data", sub: "safe, instant" },
                       { value: "linkedin", label: "LinkedIn", sub: "manual sign-in, 20/hr" },
+                      { value: "indeed", label: "Indeed", sub: "employer account, 20/hr" },
                     ] as const
                   ).map((opt) => (
                     <button
@@ -135,23 +162,26 @@ export function SearchForm() {
             ) : null}
           </Field>
 
-          <Field label="Required skills" hint="Press Enter or comma to add">
+          <Field
+            label="Keywords (optional)"
+            hint="30% of the match score. Matched against titles, headline, skills and certifications — use role words like 'external audit'. Leave blank to rank on job title and experience alone."
+          >
             <Controller
               control={control}
-              name="skills"
+              name="keywords"
               render={({ field }) => (
                 <TagInput
                   value={field.value}
                   onChange={field.onChange}
-                  placeholder="Python, FastAPI, Docker…"
+                  placeholder="vendor management, procurement…"
                 />
               )}
             />
           </Field>
 
           <Field
-            label="Critical skills"
-            hint="Candidates missing any of these are discarded"
+            label="Critical skills (optional)"
+            hint="Pass/fail, not scored. Anyone without these is discarded — checked against titles, skills and certifications. Leave blank to filter on nothing."
           >
             <Controller
               control={control}
@@ -167,10 +197,18 @@ export function SearchForm() {
           </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Location" htmlFor="location">
-              <Input id="location" placeholder="Berlin / Remote" {...register("location")} />
+            <Field
+              label="Location (optional)"
+              htmlFor="location"
+              hint="Leave blank to search everywhere — the 10% is redistributed, not given away."
+            >
+              <Input id="location" placeholder="Riyadh / Remote" {...register("location")} />
             </Field>
-            <Field label="Minimum years of experience" htmlFor="min_experience">
+            <Field
+              label="Minimum years of experience"
+              htmlFor="min_experience"
+              hint="0 means experience is not scored at all."
+            >
               <Input
                 id="min_experience"
                 type="number"
@@ -181,28 +219,84 @@ export function SearchForm() {
             </Field>
           </div>
 
-          <Field label="Keywords" hint="Extra terms to guide the search">
+          <Field
+            label="Current company (optional)"
+            hint="Applied as LinkedIn's own company filter, so people at other firms are never opened and cost you no hourly budget."
+          >
             <Controller
               control={control}
-              name="keywords"
+              name="companies"
               render={({ field }) => (
-                <TagInput
-                  value={field.value}
-                  onChange={field.onChange}
-                  placeholder="microservices, fintech…"
-                />
+                <div className="space-y-2">
+                  <TagInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Deloitte, PwC…"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      field.onChange(
+                        Array.from(new Set([...field.value, ...BIG_FOUR])),
+                      )
+                    }
+                    className="text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    + Add the Big Four
+                  </button>
+                  <Controller
+                    control={control}
+                    name="company_ids"
+                    render={({ field: idsField }) => (
+                      <div className="space-y-1">
+                        <Input
+                          placeholder="…or paste a LinkedIn search URL with the filter already applied"
+                          onChange={(e) =>
+                            idsField.onChange(companyIdsFromUrl(e.target.value))
+                          }
+                        />
+                        {idsField.value.length > 0 ? (
+                          <p className="text-xs text-success">
+                            Using {idsField.value.length} company filter
+                            {idsField.value.length === 1 ? "" : "s"} straight from
+                            LinkedIn ({idsField.value.join(", ")}).
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                  />
+                </div>
               )}
             />
           </Field>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Current company (optional)" htmlFor="company">
-              <Input id="company" {...register("company")} />
-            </Field>
-            <Field label="Industry (optional)" htmlFor="industry">
-              <Input id="industry" {...register("industry")} />
-            </Field>
-          </div>
+          <Field
+            label="Graduation year (optional)"
+            hint="Career stage, read from the candidate's earliest graduation — so a recent part-time qualification does not make a long career look new. Profiles with no education dates are kept."
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min={1950}
+                max={2100}
+                placeholder="From e.g. 2019"
+                aria-label="Graduated from year"
+                {...register("graduation_year_from")}
+              />
+              <Input
+                type="number"
+                min={1950}
+                max={2100}
+                placeholder="To (blank = now)"
+                aria-label="Graduated to year"
+                {...register("graduation_year_to")}
+              />
+            </div>
+          </Field>
+
+          <Field label="Industry (optional)" htmlFor="industry">
+            <Input id="industry" {...register("industry")} />
+          </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Maximum results" htmlFor="max_results">
@@ -227,9 +321,32 @@ export function SearchForm() {
 
           <div className="flex items-center justify-between rounded-md border border-border p-3">
             <div>
+              <Label htmlFor="require_title_match">Must work in this field</Label>
+              <p className="text-xs text-muted-foreground">
+                Discard anyone whose career shows no sign of the job title&apos;s
+                subject. A search for &ldquo;external audit manager&rdquo; then
+                cannot return a finance manager.
+              </p>
+            </div>
+            <Controller
+              control={control}
+              name="require_title_match"
+              render={({ field }) => (
+                <Switch
+                  id="require_title_match"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              )}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div>
               <Label htmlFor="enforce_location">Strict location filter</Label>
               <p className="text-xs text-muted-foreground">
-                Discard candidates outside the requested location
+                Discard candidates outside the requested location. Ignored when no
+                location is set.
               </p>
             </div>
             <Controller

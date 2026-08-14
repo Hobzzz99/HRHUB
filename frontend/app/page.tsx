@@ -190,7 +190,7 @@ export default function DashboardPage() {
                       </Badge>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {[s.location, ...(s.skills ?? [])].filter(Boolean).join(" · ") ||
+                      {[s.location, ...(s.keywords ?? [])].filter(Boolean).join(" · ") ||
                         "No filters"}
                     </p>
                   </div>

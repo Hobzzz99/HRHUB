@@ -65,9 +65,8 @@ export const api = {
     `${API_URL}/search/${id}/export?fmt=${fmt}`,
   getProviderAccount: (provider: string) =>
     request<ProviderAccount | null>(`/provider-account/${provider}`),
-  connectProvider: (provider: string, username: string, password: string) =>
-    request<ProviderAccount>("/provider-account", {
+  rotateProviderAccount: (provider: string) =>
+    request<ProviderAccount>(`/provider-account/${provider}/rotate`, {
       method: "POST",
-      body: JSON.stringify({ provider, username, password }),
     }),
 };

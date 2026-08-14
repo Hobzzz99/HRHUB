@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Frown, Users } from "lucide-react";
+import { Clock, Download, Frown, Users } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { queryKeys, useSaved, useSearchResults } from "@/lib/queries";
@@ -87,7 +87,7 @@ export default function SearchResultsPage() {
                   key={r.id}
                   candidate={r.candidate}
                   score={r.match_score}
-                  matchedSkills={r.matched_skills}
+                  matchedKeywords={r.matched_keywords}
                   reasons={r.reasons}
                   rank={r.rank}
                   initiallySaved={savedIds.has(r.candidate.id)}
@@ -96,11 +96,20 @@ export default function SearchResultsPage() {
               ))}
             </div>
           </>
+        ) : stream.progress.rate_limited ? (
+          // Zero results because the run was cut short, not because nothing fit.
+          // Telling the recruiter to loosen their criteria here would send them
+          // rewriting a search that was never the problem.
+          <EmptyState
+            icon={Clock}
+            title="Stopped before any profile was opened"
+            description="The hourly scrape limit was already spent when this search ran, so no profiles could be fetched. Re-run it once the budget frees up — your criteria are not the issue."
+          />
         ) : (
           <EmptyState
             icon={Users}
             title="No candidates matched"
-            description="Try lowering the minimum score or experience, or removing critical skills."
+            description="Try lowering the minimum score or experience, removing critical skills, or using broader keywords."
           />
         )
       ) : stream.status === "failed" ? (

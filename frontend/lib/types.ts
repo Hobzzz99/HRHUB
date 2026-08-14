@@ -7,17 +7,37 @@ export interface SearchProgress {
   to_process?: number;
   processed?: number;
   kept?: number;
+  /** Hourly scrape budget, reported up front so a stall is visible before it happens. */
+  budget_used?: number;
+  budget_limit?: number;
+  budget_remaining?: number;
+  /** Set when the run stopped early because the hourly budget was spent. */
+  rate_limited?: boolean;
+  retry_after_s?: number;
+  /** Set when the run stopped because the platform locked the account. */
+  account_restricted?: boolean;
+  /** Human-readable explanation of whichever stop condition fired. */
+  note?: string;
+  /** Wall-clock seconds: the provider search, and the run end to end. */
+  search_seconds?: number;
+  elapsed_seconds?: number;
+  seconds_per_profile?: number;
+  /** How many candidates were actually returned after filtering. */
+  returned?: number;
 }
 
 export interface Search {
   id: string;
   job_title: string;
-  skills: string[];
   critical_skills: string[];
   location: string | null;
   min_experience: number;
+  require_title_match?: boolean;
+  graduation_year_from?: number | null;
+  graduation_year_to?: number | null;
   keywords: string[];
-  company: string | null;
+  companies: string[];
+  company_ids: string[];
   industry: string | null;
   max_results: number;
   min_match_score: number;
@@ -76,10 +96,9 @@ export interface Candidate extends CandidateSummary {
 
 export interface ScoreBreakdown {
   title: number;
-  skills: number;
+  keywords: number;
   experience: number;
   location: number;
-  education: number;
 }
 
 export interface SearchResult {
@@ -88,8 +107,8 @@ export interface SearchResult {
   match_score: number;
   score_version: string;
   score_breakdown: ScoreBreakdown;
-  matched_skills: string[];
-  missing_skills: string[];
+  matched_keywords: string[];
+  missing_keywords: string[];
   reasons: string[];
   rank: number;
 }
@@ -117,18 +136,25 @@ export interface DashboardStats {
   recent_searches: Search[];
 }
 
+export type ProviderAccountStatus = "active" | "restricted" | "retired";
+
 export interface ProviderAccount {
   provider: string;
-  status: string;
+  status: ProviderAccountStatus;
   has_session: boolean;
+  status_reason: string | null;
+  /** How many accounts have already been burned on this provider. */
+  retired_count: number;
 }
 
 export interface SearchCreateInput {
   job_title: string;
-  skills: string[];
   critical_skills: string[];
   location?: string | null;
   min_experience: number;
+  require_title_match?: boolean;
+  graduation_year_from?: number | null;
+  graduation_year_to?: number | null;
   keywords: string[];
   company?: string | null;
   industry?: string | null;

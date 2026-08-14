@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Open_Sans, Poppins } from "next/font/google";
 
 import "./globals.css";
+import { AuthGuard } from "@/components/auth-guard";
 import { BackgroundDecor } from "@/components/background-decor";
 import { Navbar } from "@/components/navbar";
 import { Providers } from "@/components/providers";
@@ -41,7 +42,9 @@ export default function RootLayout({
         <Providers>
           <BackgroundDecor />
           <Navbar />
-          <main className="mx-auto max-w-6xl px-4 pb-20 pt-28">{children}</main>
+          <main className="mx-auto max-w-6xl px-4 pb-20 pt-28">
+            <AuthGuard>{children}</AuthGuard>
+          </main>
         </Providers>
       </body>
     </html>

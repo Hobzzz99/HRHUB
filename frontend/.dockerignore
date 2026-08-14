@@ -1,0 +1,10 @@
+# The web image builds with ./frontend as its context, so the repository-root
+# .dockerignore does not apply here — this file has to repeat the essentials.
+.env
+.env.*
+*.env
+node_modules
+.next
+.turbo
+.pytest_cache
+tsconfig.tsbuildinfo

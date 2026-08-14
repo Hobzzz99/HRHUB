@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Bookmark, LayoutDashboard, Search, Settings, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const links = [
@@ -16,6 +17,9 @@ const links = [
 
 export function Navbar() {
   const pathname = usePathname();
+  // On the login page there is nothing to navigate to yet: every link would
+  // bounce straight back here.
+  const signedOut = pathname === "/login";
 
   return (
     <header className="fixed inset-x-0 top-4 z-40 px-4">
@@ -30,7 +34,7 @@ export function Navbar() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {links.map(({ href, label, icon: Icon }) => {
+          {!signedOut && links.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
@@ -48,7 +52,8 @@ export function Navbar() {
               </Link>
             );
           })}
-          <div className="ml-1 border-l border-border pl-1">
+          <div className="ml-1 flex items-center gap-1 border-l border-border pl-1">
+            {!signedOut && <SignOutButton />}
             <ThemeToggle />
           </div>
         </nav>

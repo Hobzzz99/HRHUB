@@ -22,7 +22,7 @@ import { ScoreRing } from "@/components/score-ring";
 interface CandidateCardProps {
   candidate: CandidateSummary;
   score?: number;
-  matchedSkills?: string[];
+  matchedKeywords?: string[];
   reasons?: string[];
   rank?: number;
   initiallySaved?: boolean;
@@ -32,7 +32,7 @@ interface CandidateCardProps {
 export function CandidateCard({
   candidate,
   score,
-  matchedSkills = [],
+  matchedKeywords = [],
   reasons = [],
   rank,
   initiallySaved = false,
@@ -41,7 +41,7 @@ export function CandidateCard({
   const [saved, setSaved] = React.useState(initiallySaved);
   const save = useSaveCandidate();
   const unsave = useUnsaveCandidate();
-  const matched = new Set(matchedSkills.map((s) => s.toLowerCase()));
+  const matched = new Set(matchedKeywords.map((k) => k.toLowerCase()));
 
   const toggleSave = () => {
     if (saved) {

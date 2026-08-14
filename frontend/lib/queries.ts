@@ -85,12 +85,12 @@ export function useProviderAccount(provider: string) {
   });
 }
 
-export function useConnectProvider(provider: string) {
+export function useRotateProviderAccount(provider: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ username, password }: { username: string; password: string }) =>
-      api.connectProvider(provider, username, password),
+    mutationFn: () => api.rotateProviderAccount(provider),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: queryKeys.providerAccount(provider) }),
   });
 }
+
