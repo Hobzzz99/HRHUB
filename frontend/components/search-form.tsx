@@ -64,7 +64,11 @@ const defaults: FormValues = {
   max_results: 25,
   min_match_score: 40,
   enforce_location: false,
-  provider: "mock",
+  // Real candidates by default. "mock" runs on fixtures, and a recruiter who
+  // does not notice the badge gets invented people presented exactly like real
+  // ones — counted in the dashboard's averages alongside them. Demo data has to
+  // be chosen deliberately, not arrived at by leaving a default alone.
+  provider: "linkedin",
 };
 
 function Field({

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, Download, Frown, Users } from "lucide-react";
+import { AlertTriangle, Clock, Download, Frown, Users } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { queryKeys, useSaved, useSearchResults } from "@/lib/queries";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CandidateCard } from "@/components/candidate-card";
 import { CandidateDetail } from "@/components/candidate-detail";
+import { DegradedNotice } from "@/components/degraded-notice";
 import { EmptyState } from "@/components/empty-state";
 import { SearchProgress } from "@/components/search-progress";
 
@@ -33,6 +34,16 @@ export default function SearchResultsPage() {
   const savedIds = new Set((savedQuery.data ?? []).map((s) => s.candidate.id));
 
   const search = metaQuery.data;
+  const degraded = search?.degraded_reasons ?? [];
+
+  // "10 reviewed, 8 of them work at a different employer" tells a recruiter
+  // which filter to loosen. "Try lowering the minimum score" makes them guess.
+  const rejected = stream.progress.rejected;
+  const reasons = stream.progress.rejection_reasons;
+  const rejectionSummary =
+    rejected && reasons?.length
+      ? `${rejected} ${rejected === 1 ? "profile was" : "profiles were"} reviewed and filtered out — ${reasons.join(", ")}.`
+      : null;
 
   return (
     <div className="space-y-6">
@@ -66,7 +77,12 @@ export default function SearchResultsPage() {
         status={stream.status}
         progress={stream.progress}
         error={stream.error}
+        degraded={degraded.length > 0}
       />
+
+      {/* Above the results, not below: a shortlist that was never filtered the
+          way it was asked to be looks entirely convincing on its own. */}
+      <DegradedNotice reasons={degraded} />
 
       {completed ? (
         resultsQuery.isLoading ? (
@@ -105,11 +121,24 @@ export default function SearchResultsPage() {
             title="Stopped before any profile was opened"
             description="The hourly scrape limit was already spent when this search ran, so no profiles could be fetched. Re-run it once the budget frees up — your criteria are not the issue."
           />
+        ) : degraded.length > 0 ? (
+          // Something the search was asked to do did not happen, so an empty
+          // list says nothing about the market. Telling the recruiter to
+          // loosen their criteria here would send them rewriting a search that
+          // was never the problem — which is exactly what used to happen.
+          <EmptyState
+            icon={AlertTriangle}
+            title="This search could not be completed properly"
+            description={degraded.map((d) => d.detail).join(" ")}
+          />
         ) : (
           <EmptyState
             icon={Users}
             title="No candidates matched"
-            description="Try lowering the minimum score or experience, removing critical skills, or using broader keywords."
+            description={
+              rejectionSummary ??
+              "Try lowering the minimum score or experience, removing critical skills, or using broader keywords."
+            }
           />
         )
       ) : stream.status === "failed" ? (

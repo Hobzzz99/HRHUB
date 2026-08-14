@@ -24,6 +24,25 @@ export interface SearchProgress {
   seconds_per_profile?: number;
   /** How many candidates were actually returned after filtering. */
   returned?: number;
+  /** How many profiles were read and then filtered out, and the commonest
+   *  reasons why — so an empty shortlist can name the filter to loosen
+   *  instead of asking the recruiter to guess. */
+  rejected?: number;
+  rejection_reasons?: string[];
+  /** How many profiles could not be opened at all. */
+  failed_profiles?: number;
+}
+
+/** Something the run was asked to do and could not.
+ *
+ *  Distinct from an error: the search finished and may well have returned
+ *  candidates — they just answer a different question than the one asked. A
+ *  Big Four search whose company filter never reached LinkedIn returns real
+ *  people from the wrong firms, and saying nothing about that is how the app
+ *  spent a week telling recruiters their criteria were too strict. */
+export interface Degradation {
+  kind: string;
+  detail: string;
 }
 
 export interface Search {
@@ -47,6 +66,7 @@ export interface Search {
   status: SearchStatus;
   progress: SearchProgress;
   error: string | null;
+  degraded_reasons: Degradation[] | null;
   result_count: number;
   created_at: string;
   completed_at: string | null;

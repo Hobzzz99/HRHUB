@@ -1,6 +1,13 @@
 "use client";
 
-import { CheckCircle2, Clock, Loader2, ShieldAlert, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  ShieldAlert,
+  XCircle,
+} from "lucide-react";
 
 import type { SearchProgress as Progress, SearchStatus } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +16,8 @@ interface SearchProgressProps {
   status: SearchStatus;
   progress: Progress;
   error?: string | null;
+  /** Set when the run finished but could not do everything it was asked. */
+  degraded?: boolean;
 }
 
 const STAGES: { key: keyof Progress; label: string }[] = [
@@ -25,7 +34,20 @@ function humanizeSeconds(seconds: number): string {
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
-export function SearchProgress({ status, progress, error }: SearchProgressProps) {
+export function SearchProgress({
+  status,
+  progress,
+  error,
+  degraded = false,
+}: SearchProgressProps) {
+  // A run that hit the hourly cap, lost the account, or could not apply a
+  // filter still reaches "completed" — the pipeline finished. Presenting that
+  // as an unqualified success is what made the card contradict its own banners.
+  const cutShort =
+    degraded ||
+    Boolean(progress.rate_limited) ||
+    Boolean(progress.account_restricted) ||
+    Boolean(progress.failed_profiles);
   const pct =
     progress.to_process && progress.to_process > 0
       ? Math.round(((progress.processed ?? 0) / progress.to_process) * 100)
@@ -41,14 +63,21 @@ export function SearchProgress({ status, progress, error }: SearchProgressProps)
     <Card>
       <CardContent className="space-y-4 p-6">
         <div className="flex items-center gap-2">
-          {status === "completed" ? (
+          {status === "completed" && !cutShort ? (
             <CheckCircle2 className="size-5 text-success" />
           ) : status === "failed" ? (
             <XCircle className="size-5 text-destructive" />
+          ) : status === "completed" ? (
+            <AlertTriangle className="size-5 text-destructive" />
           ) : (
             <Loader2 className="size-5 animate-spin text-primary" />
           )}
-          <span className="font-medium capitalize">{status}</span>
+          {/* A green tick above "Stopped early — hourly scrape limit reached"
+              is the card contradicting itself, and the tick is what people
+              read first. */}
+          <span className="font-medium capitalize">
+            {status === "completed" && cutShort ? "Stopped early" : status}
+          </span>
           {showBudget ? (
             <span className="ml-auto text-xs text-muted-foreground">
               Hourly budget: {remaining} of {limit} left
