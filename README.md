@@ -238,7 +238,7 @@ Key switches:
 
 ```bash
 cd backend
-pytest        # 188 tests
+pytest        # 187 tests
 ```
 
 Covers scoring, experience merging, skills, filtering, providers, the API, the

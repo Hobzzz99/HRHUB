@@ -9,8 +9,25 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+
+# NEXT_PUBLIC_* values are inlined into the browser bundle by `next build`, not
+# read at container start. They must therefore arrive as build args: passing
+# them only as runtime environment leaves the shipped bundle pointing at
+# whatever the fallback was — http://localhost:8000, i.e. the user's own
+# machine, which fails for everyone but the developer.
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_SUPABASE_URL=
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ARG NEXT_PUBLIC_AUTH_DISABLED=false
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    NEXT_PUBLIC_AUTH_DISABLED=$NEXT_PUBLIC_AUTH_DISABLED \
+    NEXT_TELEMETRY_DISABLED=1
+# This project has no public/ directory. Creating it keeps the COPY in the
+# runner stage valid without making the build depend on a folder that may or
+# may not exist — the previous unconditional COPY failed the image outright.
+RUN mkdir -p public && npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app

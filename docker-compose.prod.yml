@@ -1,0 +1,108 @@
+# --- Production stack: everything except the scraper -----------------------
+#
+# The Celery worker is deliberately ABSENT from this file. LinkedIn sign-in and
+# CAPTCHAs are cleared by hand in a visible browser window (SCRAPE_HEADLESS is
+# false and cannot be flipped without inviting the restriction that has already
+# cost two accounts), so the worker runs on a recruiter's PC instead. See
+# infra/worker-pc/ for that half.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Postgres and Redis bind to loopback only. They are reachable from the worker
+# PC through the SSH tunnel in infra/worker-pc/tunnel.ps1, and from nowhere
+# else. Caddy is the sole public surface.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Loopback only: visible to the SSH tunnel, invisible to the internet.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: ../infra/Dockerfile.web
+      args:
+        # Build args, not runtime env — see the comment in Dockerfile.web.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL}/api
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        # Defaults to false so a missing value can never silently ship an
+        # unauthenticated build. Set true only for a local proof run, where
+        # Supabase does not exist yet.
+        NEXT_PUBLIC_AUTH_DISABLED: ${NEXT_PUBLIC_AUTH_DISABLED:-false}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddy obtains and renews the TLS certificate for this name itself.
+      SITE_DOMAIN: ${SITE_DOMAIN}
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:

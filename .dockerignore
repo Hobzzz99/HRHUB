@@ -1,0 +1,59 @@
+# Keep the build context clean.
+#
+# This file exists because of a real failure: `COPY backend/ ./` swept the
+# developer's local `backend/.env` into the production image. pydantic-settings
+# reads that file for any setting the container environment does not explicitly
+# define, so the API silently inherited CELERY_TASK_ALWAYS_EAGER=true,
+# PROVIDER=linkedin and a Windows PLAYWRIGHT_BROWSERS_PATH — and ran scrape jobs
+# itself instead of queueing them for the recruiter's laptop.
+#
+# Two consequences, both bad: production behaviour decided by a file nobody
+# thought was deployed, and any secret in it baked into a shippable image.
+
+# --- Secrets. Never in an image. ---
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+
+# --- Version control and CI ---
+.git
+.gitignore
+.github
+
+# --- Local databases: real candidate PII ---
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# --- Python build artefacts ---
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+.venv
+venv
+
+# --- Node / Next.js (the web image builds from ./frontend) ---
+**/node_modules
+**/.next
+**/.turbo
+
+# --- Scraper local state. Machine-specific; must not travel. ---
+.pw-browsers
+backend/_debug
+backend/_state
+storage-state
+
+# --- Documents and editor noise ---
+*.pdf
+.vscode
+.idea
+.claude
+.mcp.json

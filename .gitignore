@@ -13,10 +13,15 @@ htmlcov/
 .coverage.*
 
 # Env / secrets
+# `.env.*` rather than `*.env`: the latter only matches names ENDING in .env,
+# so it would have let .env.prod — real database passwords and the session
+# encryption key — straight into the repository.
 .env
-.env.local
+.env.*
 *.env
 !.env.example
+!.env.prod.example
+!infra/worker-pc/.env.worker.example
 
 # Local database — contains real candidate PII and encrypted credentials.
 # Never commit this.

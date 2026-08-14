@@ -1,0 +1,35 @@
+# TLS terminates here. Caddy requests and renews the certificate from Let's
+# Encrypt automatically, so nothing about certificates needs managing by hand —
+# the only requirement is that SITE_DOMAIN's DNS A record points at this server
+# and ports 80 and 443 are open.
+
+{$SITE_DOMAIN} {
+	encode gzip
+
+	# The API is served under /api on the same origin as the web app. One
+	# domain, one certificate, and no CORS preflight — the browser sees a
+	# single origin. handle_path strips the prefix, so /api/search/123
+	# arrives at the API as /search/123.
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
