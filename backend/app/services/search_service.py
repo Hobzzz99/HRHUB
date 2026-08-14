@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -108,8 +108,40 @@ def get_results(db: Session, search_id: uuid.UUID) -> list[SearchResult]:
 
 # --- Candidates / saved -----------------------------------------------------
 
-def get_candidate(db: Session, candidate_id: uuid.UUID) -> Candidate | None:
-    return db.get(Candidate, candidate_id)
+def get_candidate(db: Session, user_id: str, candidate_id: uuid.UUID) -> Candidate | None:
+    """A candidate this user has actually seen — through a search or a bookmark.
+
+    The `candidates` table is deduplicated globally by `(source,
+    source_profile_url)`: one row per real person, shared by everyone who ever
+    finds them, which is what stops two recruiters spending scrape budget on the
+    same profile. A bare primary-key lookup therefore returned anybody's
+    candidate to anybody holding the id — and ids are not secret, they travel in
+    every results payload.
+
+    Scoped like every other read in this module. If a shared candidate pool is
+    later wanted deliberately, that is a decision to make and document, not one
+    to arrive at because one endpoint was written differently from its
+    neighbours.
+    """
+    uid = as_user_uuid(user_id)
+    return db.scalar(
+        select(Candidate)
+        .where(Candidate.id == candidate_id)
+        .where(
+            or_(
+                Candidate.id.in_(
+                    select(SearchResult.candidate_id)
+                    .join(Search, Search.id == SearchResult.search_id)
+                    .where(Search.user_id == uid)
+                ),
+                Candidate.id.in_(
+                    select(SavedCandidate.candidate_id).where(
+                        SavedCandidate.user_id == uid
+                    )
+                ),
+            )
+        )
+    )
 
 
 def save_candidate(

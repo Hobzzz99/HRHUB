@@ -13,7 +13,7 @@ from app.api.routes import candidates, dashboard, health, provider_accounts, sea
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import session_scope
-from app.services import stale_searches
+from app.services import retention, stale_searches
 
 logger = get_logger(__name__)
 
@@ -21,6 +21,10 @@ logger = get_logger(__name__)
 #: recruiter is not left watching a dead progress bar for long, rare enough to
 #: be invisible — the query is a single indexed lookup on `status`.
 _SWEEP_INTERVAL_S = 300
+
+#: Retention runs every 12th sweep — roughly hourly. It scans every candidate
+#: row, and nothing about it is time-critical.
+_RETENTION_EVERY_N_SWEEPS = 12
 
 
 @asynccontextmanager
@@ -33,6 +37,7 @@ async def lifespan(_: FastAPI):
     """
 
     async def sweep_forever() -> None:
+        ticks = 0
         while True:
             try:
                 with session_scope() as db:
@@ -41,6 +46,18 @@ async def lifespan(_: FastAPI):
                     logger.warning("stale_searches_reaped", count=reaped)
             except Exception:  # noqa: BLE001 — a bad sweep must not stop the API
                 logger.exception("stale_search_sweep_failed")
+
+            # Retention is not urgent and touches every candidate row, so it
+            # runs far less often than the stale-search check it shares a loop
+            # with.
+            if ticks % _RETENTION_EVERY_N_SWEEPS == 0:
+                try:
+                    with session_scope() as db:
+                        retention.purge_expired(db)
+                except Exception:  # noqa: BLE001 — same reasoning
+                    logger.exception("retention_sweep_failed")
+
+            ticks += 1
             await asyncio.sleep(_SWEEP_INTERVAL_S)
 
     task = asyncio.create_task(sweep_forever())

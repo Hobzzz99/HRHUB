@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # --- Provider ---
     provider: ProviderName = "mock"
     profile_ttl_days: int = 7
+    # How long a candidate profile nothing references is kept before being
+    # deleted. Distinct from profile_ttl_days, which is cache freshness — an
+    # "expired" profile under that setting is re-scraped and overwritten, never
+    # removed, so without this a person scraped once and never matched is held
+    # for ever. COMPLIANCE.md commits to a retention policy; this is it.
+    candidate_retention_days: int = 180
     scrape_min_delay_ms: int = 1500
     scrape_max_delay_ms: int = 4000
     scrape_max_profiles: int = 25
