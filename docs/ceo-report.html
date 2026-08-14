@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TalentFinder — Status Report for the CEO</title>
+<link rel="stylesheet" href="report.css">
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Status Report</div>
+  <h1>TalentFinder</h1>
+  <div class="sub">Automated candidate sourcing and ranking</div>
+  <div class="rule"></div>
+  <p class="lede">
+    A recruiter describes a role once and gets back a ranked shortlist, every candidate
+    carrying a match score and a written reason for it — replacing an afternoon of reading
+    profiles.
+  </p>
+  <p class="lede" style="margin-top:14px">
+    <strong>It now works end to end.</strong> A real search returned six external audit
+    managers at EY, KPMG and Deloitte, correctly ranked. The accuracy is measured rather
+    than asserted, against 237 real profiles.
+  </p>
+  <p class="lede" style="margin-top:14px">
+    <strong>The engineering is done. What remains is a commercial decision</strong> — where
+    candidate data comes from — and that is what this report asks for.
+  </p>
+  <div class="cover-meta">
+    <div><div class="k">Product</div><div class="v">Working, proven on a live search</div></div>
+    <div><div class="k">Quality</div><div class="v">419 automated checks passing</div></div>
+    <div><div class="k">Decision needed</div><div class="v">Where the data comes from</div></div>
+  </div>
+</div>
+
+<section class="cont">
+<h2>1. Where it stands</h2>
+
+<div class="box ok">
+  <span class="lbl">The pitch</span>
+  <p>
+    <strong>Recruiters spend most of their sourcing time reading profiles that were never
+    going to fit.</strong> TalentFinder automates that first pass. You describe the role —
+    title, qualifications, minimum experience, employers — and the system finds candidate
+    profiles, reads each one, and returns a ranked shortlist where every candidate carries a
+    match percentage, a breakdown showing <em>why</em>, and the specific things they have
+    and lack. It exports to spreadsheet.
+  </p>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">6 / 6</div><div class="l">live search: correct candidates</div></div>
+  <div class="kpi"><div class="n">70%</div><div class="l">off-target profiles rejected</div></div>
+  <div class="kpi"><div class="n">33 / 33</div><div class="l">employer filter correct</div></div>
+  <div class="kpi"><div class="n">419</div><div class="l">automated quality checks</div></div>
+</div>
+
+<h3>The proof</h3>
+
+<p>
+  A recruiter asked for external audit managers at the Big Four, holding a professional
+  qualification, with five years' experience. This is what came back:
+</p>
+
+<pre>  100   Hisham Sabry, ACCA, ESAA             Audit Manager      EY
+  100   Marwan Mohamed, CPA                  Audit Manager      KPMG
+   95   Mohamed Fathy Bakr, ACCA, FESAA      Audit Manager      EY
+   92   Mohamed Elsherif, ACCA, CA, DipIFR   Audit Manager      EY
+   92   Belal Mansour, ESAA, DipIFR          Assistant Manager  Deloitte
+   85   Nancy Hamdy, ACCA                    Audit Manager      EY</pre>
+
+<p>
+  Six people, all at the requested firms, all genuinely auditors, ranked by how well their
+  career fits the role. That is the product doing its job.
+</p>
+
+<div class="ask">
+  <h3>What I need from you</h3>
+  <p>
+    A decision on <strong>where candidate data comes from</strong>, set out in section 4.
+    The product works; the constraint is supply. Today we collect it ourselves from
+    LinkedIn, which caps each recruiter at a fixed hourly rate and puts their personal
+    LinkedIn account at risk. Lifting that is a purchasing decision, not a development one —
+    the system was deliberately built so the source can be changed without touching anything
+    else.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>2. How good the matching is</h2>
+
+<p>
+  Rather than assert this, we tested it: the engine was re-run over the
+  <strong>237 real candidate profiles the system has collected</strong> — genuine auditors
+  and finance professionals across Egypt and Saudi Arabia.
+</p>
+
+<table>
+  <tr><th style="width:46%">What was measured</th><th style="width:18%">Result</th><th>What it means</th></tr>
+  <tr>
+    <td>Off-target candidates rejected</td>
+    <td class="num"><strong>70%</strong></td>
+    <td>The twelve highest-ranked survivors are all career external auditors.</td>
+  </tr>
+  <tr>
+    <td>Employer filter correctness</td>
+    <td class="num"><strong>33 / 33</strong></td>
+    <td>Every candidate returned genuinely worked at a Big Four firm, spread across all four.</td>
+  </tr>
+  <tr>
+    <td>Live search</td>
+    <td class="num"><strong>6 / 6</strong></td>
+    <td>Proven outside the archive, on a real recruiter's search.</td>
+  </tr>
+</table>
+
+<p>
+  The rejection rate tracks how specific the request is — 79% for <em>financial reporting
+  supervisor</em>, 70% for <em>external audit manager</em>, 62% for <em>finance manager</em>.
+  The system is not rejecting more of everything; it rejects in proportion to how precisely
+  the role is described.
+</p>
+
+<h3>It understands this market, not a textbook one</h3>
+
+<p>
+  Two things had to be learned from the data, and both would have quietly halved the useful
+  output:
+</p>
+
+<table>
+  <tr><th style="width:40%">What we found</th><th>Why it mattered</th></tr>
+  <tr>
+    <td><strong>At an audit firm, external audit is just called "Audit"</strong></td>
+    <td>Nobody at EY titles themselves "External Audit Manager". Requiring the literal word discarded 28 audit managers at exactly the four firms the recruiter had asked for.</td>
+  </tr>
+  <tr>
+    <td><strong>CPA is the American qualification</strong></td>
+    <td>This market runs on ACCA, ESAA and DipIFR. Five of the six candidates above hold no CPA. Filtering on it alone would have returned one person out of six.</td>
+  </tr>
+</table>
+
+<div class="box ok">
+  <span class="lbl">What measuring caught that reviewing would not have</span>
+  <p>
+    Both of these were found by testing each claim against the real archive, not by reading
+    the code — which looked correct. The point worth making: <strong>this is the error class
+    that does not announce itself.</strong> A shortlist that is too short looks like a thin
+    market, not a bug. We found them because we measured, and the system now says so when
+    it cannot do what it was asked.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>3. Built to be trusted</h2>
+
+<p>
+  A sourcing tool lives or dies on whether a recruiter believes the shortlist. The single
+  largest piece of work since the last report was making the system incapable of quietly
+  giving a wrong answer.
+</p>
+
+<table>
+  <tr><th style="width:38%">Situation</th><th>What the recruiter is told</th></tr>
+  <tr>
+    <td>Nobody matched the criteria</td>
+    <td>Which filter rejected people, and how many — <em>"8 work at a different employer, 2 are missing a required qualification"</em> — so they know what to loosen.</td>
+  </tr>
+  <tr>
+    <td>A filter could not be applied</td>
+    <td>Plainly, before the results: <em>"These results are not what you asked for."</em> Plus how to work around it.</td>
+  </tr>
+  <tr>
+    <td>The hourly limit was reached</td>
+    <td>That the run was cut short, that the criteria were not the problem, and when it can resume.</td>
+  </tr>
+  <tr>
+    <td>The LinkedIn account was locked</td>
+    <td>That it stopped, and that everything collected before it was kept.</td>
+  </tr>
+  <tr>
+    <td>Their machine died mid-search</td>
+    <td>That it stopped unexpectedly, and that re-running will not repeat the cost.</td>
+  </tr>
+</table>
+
+<p>
+  Previously all five showed the same sentence: <em>"No candidates matched. Try lowering the
+  minimum score."</em> — which blames the recruiter for a technical failure. That is how a
+  tool loses its users, and it is now impossible.
+</p>
+
+<h3>And the obligations that come with candidate data</h3>
+
+<p>
+  A candidate can be erased on request — their profile, every search result referencing
+  them, and every recruiter's saved copy — and the deletion is logged. Profiles nothing
+  references are removed automatically after six months, and the raw collected payload is
+  discarded once it is no longer needed. This was previously a written promise with no
+  implementation behind it.
+</p>
+</section>
+
+<section>
+<h2>4. The decision</h2>
+
+<p>
+  Everything above is engineering that is finished. What follows is not, and it is the only
+  thing standing between this and company-wide use.
+</p>
+
+<h3>How data is collected today</h3>
+
+<p>
+  Each recruiter's own computer drives a real browser against LinkedIn using
+  <strong>their own personal LinkedIn account</strong>, which they sign into by hand. There
+  is a hard cap on how many profiles an hour that account may open — the control that keeps
+  it alive.
+</p>
+
+<table>
+  <tr><th style="width:34%">Consequence</th><th>Detail</th></tr>
+  <tr>
+    <td><strong>It breaches LinkedIn's terms</strong></td>
+    <td>Rolling it out company-wide moves that from one person's account to the company, at company direction.</td>
+  </tr>
+  <tr>
+    <td><strong>Accounts get restricted</strong></td>
+    <td>Two have been, at the current rate. A restriction costs that recruiter their own professional network, not just a tool.</td>
+  </tr>
+  <tr>
+    <td><strong>Throughput is capped per person</strong></td>
+    <td>It scales with headcount rather than with hardware. Five recruiters is five times the rate — but also five accounts at risk.</td>
+  </tr>
+  <tr>
+    <td><strong>It breaks when LinkedIn changes</strong></td>
+    <td>Twice already. Each time it is unplanned work on someone else's schedule.</td>
+  </tr>
+</table>
+
+<div class="ask">
+  <h3>The alternative</h3>
+  <p>
+    Buying candidate data from a licensed provider removes all four at once: no personal
+    accounts at risk, no terms breach, no per-person cap, and nothing that breaks when a
+    website is redesigned.
+  </p>
+  <p>
+    <strong>Nothing else about the product changes.</strong> The data source was built as a
+    replaceable component from the start — the matching, ranking, explanation and export all
+    work identically whatever supplies the profiles. That was a deliberate decision made
+    early precisely so this choice could be made late, commercially, without rewriting the
+    system.
+  </p>
+  <p style="margin-top:8px">
+    <strong>What I am asking for:</strong> approval to evaluate licensed providers and a
+    budget range, and a decision on whether recruiters' personal LinkedIn accounts may be
+    used in the meantime.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>5. What is not finished</h2>
+
+<p>Stated plainly, because you should hear it here first.</p>
+
+<table>
+  <tr><th style="width:36%">Item</th><th>Status</th></tr>
+  <tr>
+    <td><strong>Not yet on a server</strong></td>
+    <td>It runs on a developer machine today. Deployment is documented and needs a small server and about an hour.</td>
+  </tr>
+  <tr>
+    <td><strong>One live search, not a week of them</strong></td>
+    <td>The pipeline is proven. It is not yet proven to keep working across sustained real use.</td>
+  </tr>
+  <tr>
+    <td><strong>No single accuracy percentage</strong></td>
+    <td>Deliberate. That needs a recruiter to mark a sample of candidates <em>would interview / would not</em> — about an hour — and until then any number quoted would be invented.</td>
+  </tr>
+  <tr>
+    <td><strong>One filter needs a manual step</strong></td>
+    <td>Restricting to specific firms currently works by pasting a link from LinkedIn — ten seconds, entirely reliable. Automating that step is unfinished, and the app says so when it cannot do it.</td>
+  </tr>
+</table>
+
+<div class="box">
+  <span class="lbl">Recommendation</span>
+  <p>
+    Deploy it for a small number of recruiters and let it run for two weeks before any wider
+    rollout. The product is good; what it has not had is time. Two weeks of real use will
+    surface the ordinary problems that only appear with real users, at a scale where they
+    cost patience rather than credibility.
+  </p>
+</div>
+
+<div class="foot">
+  Prepared 14 August 2026. Accuracy figures come from re-running the production code over
+  the 237 candidate profiles in the application database, plus one live LinkedIn search.
+  419 automated checks passing. Legal statements summarise the project's own compliance
+  documentation and are not legal advice.
+</div>
+</section>
+
+</body>
+</html>

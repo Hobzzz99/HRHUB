@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TalentFinder — Matching Accuracy, Measured</title>
+<link rel="stylesheet" href="report.css">
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Measurement Report</div>
+  <h1>Matching Accuracy</h1>
+  <div class="sub">Measured against 237 real profiles, and proven in live use</div>
+  <div class="rule"></div>
+  <p class="lede">
+    Every figure here was produced by re-running the live matching engine over the
+    <strong>237 genuine LinkedIn profiles the system has collected</strong> — real auditors,
+    real finance managers, real employers. Nothing is estimated or projected.
+  </p>
+  <p class="lede" style="margin-top:14px">
+    Since the last edition the engine has also been <strong>proven end to end on a live
+    search</strong>: six external auditors at EY, KPMG and Deloitte, ranked, returned to a
+    recruiter. That run is the section this report was previously missing.
+  </p>
+  <div class="cover-meta">
+    <div><div class="k">Evidence base</div><div class="v">237 real profiles</div></div>
+    <div><div class="k">Automated checks</div><div class="v">419 passing</div></div>
+    <div><div class="k">Date</div><div class="v">14 August 2026</div></div>
+  </div>
+</div>
+
+<section class="cont">
+<h2>The headline</h2>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">70%</div><div class="l">of the pool rejected as off-target</div></div>
+  <div class="kpi"><div class="n">33 / 33</div><div class="l">employer filter correct</div></div>
+  <div class="kpi"><div class="n">6 / 6</div><div class="l">live search: correct candidates</div></div>
+  <div class="kpi"><div class="n">419</div><div class="l">automated checks passing</div></div>
+</div>
+
+<div class="box ok">
+  <span class="lbl">Verdict</span>
+  <p>
+    The engine performs well on everything measurable, and it has now been demonstrated on
+    a real search rather than only on the archive. A recruiter asked for external audit
+    managers at the Big Four and received six — all genuinely at those firms, all genuinely
+    auditors, ranked by how well their career fits.
+  </p>
+</div>
+
+<h3>What "accuracy" means here — and what it does not</h3>
+
+<p>
+  There is still no single accuracy percentage, and any report quoting one would be
+  inventing it. A percentage needs an answer key: a sample of candidates marked
+  <em>would interview</em> or <em>would not</em> by a recruiter. That exercise has not been
+  done, and the final section sets out the hour of work it would take.
+</p>
+
+<p>What can be measured, and is measured here:</p>
+
+<ul>
+  <li><strong>Does it reject candidates in the wrong profession?</strong> Checkable: read the job history.</li>
+  <li><strong>Does the employer filter hold?</strong> Checkable: read the employer.</li>
+  <li><strong>Does the ranking put the right people first?</strong> Partly — and this is where three defects were found.</li>
+  <li><strong>Does it work on a real search?</strong> Now answered.</li>
+</ul>
+</section>
+
+<section>
+<h2>The live search</h2>
+
+<p>
+  A recruiter searched for <em>external audit manager</em>, restricted to the Big Four,
+  requiring a professional qualification and five years' experience. Ten profiles were
+  reviewed. Six were returned:
+</p>
+
+<pre>rank  score  name                                 title              employer
+  1    100   Hisham Sabry, ACCA, ESAA             Audit Manager      EY
+  2    100   Marwan Mohamed, CPA                  Audit Manager      KPMG
+  3     95   Mohamed Fathy Bakr, ACCA, FESAA      Audit Manager      EY
+  4     92   Mohamed Elsherif, ACCA, CA, DipIFR   Audit Manager      EY
+  5     92   Belal Mansour, ESAA, DipIFR          Assistant Manager  Deloitte
+  6     85   Nancy Hamdy, ACCA                    Audit Manager      EY</pre>
+
+<p>Every fix this engine has had is visible in those six rows:</p>
+
+<table>
+  <tr><th style="width:38%">What the shortlist shows</th><th>Why it matters</th></tr>
+  <tr>
+    <td><strong>All six are at Big Four firms</strong></td>
+    <td>The employer constraint held, end to end.</td>
+  </tr>
+  <tr>
+    <td><strong>Not one job title says "external"</strong></td>
+    <td>At an audit firm the statutory work is titled simply "Audit". An earlier version demanded the literal word and discarded all six.</td>
+  </tr>
+  <tr>
+    <td><strong>Five of six hold no CPA</strong></td>
+    <td>They hold ACCA, ESAA, DipIFR — the qualifications this market actually uses. Requiring the American credential would have returned one person.</td>
+  </tr>
+  <tr>
+    <td><strong>Four carry the credential in their name</strong></td>
+    <td>"Hisham Sabry, ACCA, ESAA" is how this market presents itself. Reading only the skills list missed them.</td>
+  </tr>
+</table>
+
+<div class="box ok">
+  <span class="lbl">The candidate worth pointing at</span>
+  <p>
+    Mohamed Fathy Bakr at EY, now rank 3, is the same person an earlier diagnostic showed
+    being rejected for a single reason: <em>"Missing critical skills: CPA"</em>. He is an
+    Audit Manager at EY holding ACCA and FESAA. He was never a poor match; the filter was
+    asking the wrong question.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>The archive measurement</h2>
+
+<h3>The profession filter</h3>
+
+<p>
+  The original complaint was concrete: <em>external audit manager</em> returned Finance
+  Managers, because both titles share the word "manager". That is not a partial match — it
+  is a different job. The engine now separates <strong>what the job is</strong> from
+  <strong>how senior it is</strong>, and treats the profession as a gate.
+</p>
+
+<table>
+  <tr><th>Search</th><th style="width:22mm">Before</th><th style="width:22mm">Now</th><th style="width:22mm">Rejected</th></tr>
+  <tr><td>external audit manager</td><td class="num">237</td><td class="num">72</td><td class="num yes">70%</td></tr>
+  <tr><td>financial reporting supervisor</td><td class="num">237</td><td class="num">49</td><td class="num yes">79%</td></tr>
+  <tr><td>finance manager</td><td class="num">237</td><td class="num">91</td><td class="num yes">62%</td></tr>
+</table>
+
+<p>
+  The most specific request cuts hardest and the broadest cuts least. That pattern is the
+  evidence the gate discriminates rather than simply rejecting.
+</p>
+
+<h3>The Big Four guarantee</h3>
+
+<p>
+  When those firms are selected the requirement is absolute, and it is enforced twice: once
+  through LinkedIn's own filter, and again after each profile is opened — so it holds even
+  if the browser automation fails entirely.
+</p>
+
+<table>
+  <tr><th>Firm</th><th style="width:24mm">Returned</th><th style="width:26mm">Correct</th></tr>
+  <tr><td>PwC / PwC Middle East</td><td class="num">13</td><td><span class="tag g">Yes</span></td></tr>
+  <tr><td>EY</td><td class="num">7</td><td><span class="tag g">Yes</span></td></tr>
+  <tr><td>Deloitte</td><td class="num">7</td><td><span class="tag g">Yes</span></td></tr>
+  <tr><td>KPMG (Egypt, Saudi Arabia, Lower Gulf)</td><td class="num">6</td><td><span class="tag g">Yes</span></td></tr>
+  <tr><td><strong>Total</strong></td><td class="num"><strong>33</strong></td><td><strong class="yes">33 / 33</strong></td></tr>
+</table>
+
+<h3>What the market actually holds</h3>
+
+<p>
+  Counted across all 237 profiles. This is the single most useful thing in this report for
+  briefing recruiters:
+</p>
+
+<table>
+  <tr><th>Qualification</th><th style="width:20mm">Holders</th><th>Note</th></tr>
+  <tr><td>CPA</td><td class="num">42 (17%)</td><td>American</td></tr>
+  <tr><td>ACCA</td><td class="num">21 (8%)</td><td>British — dominant in Egypt and the Gulf</td></tr>
+  <tr><td>DipIFR</td><td class="num">16 (6%)</td><td></td></tr>
+  <tr><td>CIA</td><td class="num">8 (3%)</td><td>Internal audit</td></tr>
+  <tr><td>ESAA</td><td class="num">5 (2%)</td><td>Egyptian Society of Accountants &amp; Auditors</td></tr>
+  <tr><td><strong>CPA <em>or</em> ACCA <em>or</em> ESAA</strong></td><td class="num"><strong>60</strong></td><td>43% more than CPA alone</td></tr>
+</table>
+
+<p>
+  A search can now ask for any of several qualifications in one requirement —
+  <code>CPA / ACCA / ESAA</code> — because requiring all three, which is what separate
+  entries mean, matches nobody.
+</p>
+</section>
+
+<section>
+<h2>Three defects found by measuring</h2>
+
+<p>
+  All three are recorded rather than quietly corrected. A measurement report that only
+  reports good news is not a measurement.
+</p>
+
+<h3>1. A self-declared skill could satisfy the job requirement</h3>
+<p>
+  Six of 39 candidates cleared the profession gate on a LinkedIn <em>skill tag</em> reading
+  "External Audit", with no supporting job history — among them a Finance Manager and a
+  Head of Finance. A tag costs nothing to add. Skills are now excluded from the gate and
+  kept for keyword matching, where self-declaration is fair evidence. <strong>Result:
+  6 → 0.</strong>
+</p>
+
+<h3>2. Internal auditors outranked external ones</h3>
+<p>
+  A candidate with five internal audit roles and one external role from early in his career
+  scored <strong>100, joint first</strong>, above people doing external audit at PwC today.
+  Depth credited a role for matching <em>any</em> word of the request, so "audit" matched
+  all five internal roles in full while "external" counted for nothing. Each role is now
+  credited by the share of the request it evidences. <strong>He moved to 79.2,
+  thirteenth.</strong>
+</p>
+
+<h3>3. Audit managers at the Big Four were discarded entirely</h3>
+<p>
+  The most serious, and it surfaced only when each claim in this report was tested
+  individually. A search for <em>external audit manager</em> was rejecting Audit Managers at
+  KPMG, PwC, EY and Deloitte — <strong>28 people at the exact firms the recruiter asked
+  for</strong>. The cause is a fact about the profession, not a coding error: at an audit
+  firm the statutory work is called "Audit", and only people distinguishing themselves from
+  internal auditors write "external".
+</p>
+
+<div class="box ok">
+  <span class="lbl">Result</span>
+  <p>
+    An unqualified audit or assurance role now reads as external audit unless the career
+    says "internal" — which internal auditors do say, every time, because theirs is the
+    variant needing a label. <strong>Big Four candidates went from 16 to 33</strong>, spread
+    across all four firms instead of 11 from a single PwC office. Internal auditors with no
+    external experience are still rejected; that was re-verified, not assumed.
+  </p>
+</div>
+
+<div class="box">
+  <span class="lbl">Verification</span>
+  <p>
+    All three fixes live in one file, <code>job_titles.py</code>, covered by automated
+    checks that pin these exact cases — including the internal-audit rejections, so the gate
+    cannot be loosened later without a test failing. Suite: <strong>419 passing</strong>.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>What is still not proven</h2>
+
+<table>
+  <tr><th style="width:44%">Point</th><th>Status</th></tr>
+  <tr>
+    <td><strong>No labelled benchmark</strong></td>
+    <td>Nobody has marked candidates <em>would interview / would not</em>, so there is no single defensible accuracy percentage — only the specific results here.</td>
+  </tr>
+  <tr>
+    <td><strong>One live search, not sustained use</strong></td>
+    <td>The pipeline is proven to work. It is not yet proven to keep working across weeks of real recruiting.</td>
+  </tr>
+  <tr>
+    <td><strong>The automatic employer filter</strong></td>
+    <td>The live search used company ids pasted from a LinkedIn URL, which is reliable and takes ten seconds. Driving LinkedIn's filter panel automatically is still unproven — and when it fails the app now says so plainly rather than returning an unfiltered list.</td>
+  </tr>
+</table>
+
+<div class="ask">
+  <h3>How to turn this into a real percentage</h3>
+  <p>
+    Take <strong>50 candidates</strong> from the 237 already collected. Mark each one
+    <em>would interview</em> or <em>would not</em> — no scoring, no notes. About an hour of
+    a recruiter's time.
+  </p>
+  <p>
+    With that answer key, precision becomes measured rather than asserted: <em>of the
+    candidates the system put in front of you, X% were ones you would actually contact.</em>
+    That figure holds up under questioning, can be re-run after every change to prove the
+    system improved rather than merely changed, and is the only form of this number worth
+    showing a stakeholder.
+  </p>
+</div>
+
+<div class="foot">
+  Figures computed on 14 August 2026 by re-running the production scoring and filtering code
+  over the 237 profiles in the application database, plus one live LinkedIn search. Test
+  suite: 419 automated checks passing. No figure in this document is estimated or projected.
+</div>
+</section>
+
+</body>
+</html>

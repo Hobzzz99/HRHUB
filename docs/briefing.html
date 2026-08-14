@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HRHUB / TalentFinder — Project Briefing</title>
+<link rel="stylesheet" href="report.css">
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Project Briefing</div>
+  <h1>TalentFinder</h1>
+  <div class="sub">Automated candidate sourcing, scoring and ranking</div>
+  <div class="rule"></div>
+  <p class="lede">
+    A recruiter types the requirements for a role. The system finds candidate profiles,
+    extracts each into structured data, scores every candidate on four weighted dimensions,
+    discards the ones failing a hard requirement, and returns a ranked shortlist with a
+    written justification for each person.
+  </p>
+  <p class="lede" style="margin-top:14px">
+    This document is for understanding the whole system well enough to explain and defend
+    it: what it does, how it is built, what it costs, where it is fragile, and which
+    decisions are still open.
+  </p>
+  <div class="cover-meta">
+    <div><div class="k">Status</div><div class="v">Working · proven on a live search</div></div>
+    <div><div class="k">Quality</div><div class="v">419 tests passing</div></div>
+    <div><div class="k">Codebase</div><div class="v">Branch <code>main</code>, pushed</div></div>
+  </div>
+</div>
+
+<section class="cont">
+<h2>Contents</h2>
+<div class="toc">
+  <div class="grp">Part I — The product</div>
+  <div><span>1. Executive summary</span><span class="n">3</span></div>
+  <div><span>2. What a recruiter actually does</span><span class="n">4</span></div>
+
+  <div class="grp">Part II — How it works</div>
+  <div><span>3. Architecture</span><span class="n">5</span></div>
+  <div><span>4. The search pipeline</span><span class="n">6</span></div>
+  <div><span>5. The matching engine</span><span class="n">7</span></div>
+  <div><span>6. Telling the truth about failure</span><span class="n">9</span></div>
+  <div><span>7. Where the data comes from</span><span class="n">10</span></div>
+
+  <div class="grp">Part III — The business conversation</div>
+  <div><span>8. Quality: what 419 tests cover</span><span class="n">11</span></div>
+  <div><span>9. Data protection and retention</span><span class="n">12</span></div>
+  <div><span>10. Deployment and operations</span><span class="n">13</span></div>
+  <div><span>11. Cost</span><span class="n">14</span></div>
+  <div><span>12. Legal and compliance</span><span class="n">15</span></div>
+  <div><span>13. Known limitations</span><span class="n">16</span></div>
+  <div><span>14. Where I would take it next</span><span class="n">17</span></div>
+</div>
+
+<div class="box" style="margin-top:26px">
+  <span class="lbl">How to use this document</span>
+  <p>
+    Sections 1–2 are the business story: read these if you have five minutes. Sections 3–7
+    are how it is built, in the order you would explain it at a whiteboard. Sections 8–14
+    are what an owner cares about — quality, cost, risk, and what happens next.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>1. Executive summary</h2>
+
+<div class="box ok">
+  <span class="lbl">The pitch</span>
+  <p>
+    <strong>Recruiters spend most of their sourcing time reading profiles that were never
+    going to fit.</strong> This automates that first pass and returns a ranked shortlist
+    where every candidate carries a match percentage, a breakdown of why, and the specific
+    things they have and lack.
+  </p>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">4</div><div class="l">scoring dimensions</div></div>
+  <div class="kpi"><div class="n">6 / 6</div><div class="l">live search, correct</div></div>
+  <div class="kpi"><div class="n">33 / 33</div><div class="l">employer filter correct</div></div>
+  <div class="kpi"><div class="n">419</div><div class="l">automated tests</div></div>
+</div>
+
+<h3>It has been proven on a real search</h3>
+
+<p>
+  A recruiter asked for external audit managers at the Big Four with a professional
+  qualification and five years' experience, and received six:
+</p>
+
+<pre>  100   Hisham Sabry, ACCA, ESAA             Audit Manager      EY
+  100   Marwan Mohamed, CPA                  Audit Manager      KPMG
+   95   Mohamed Fathy Bakr, ACCA, FESAA      Audit Manager      EY
+   92   Mohamed Elsherif, ACCA, CA, DipIFR   Audit Manager      EY
+   92   Belal Mansour, ESAA, DipIFR          Assistant Manager  Deloitte
+   85   Nancy Hamdy, ACCA                    Audit Manager      EY</pre>
+
+<h3>The three things that matter most</h3>
+
+<p>
+  <strong>1. The valuable part is the scoring engine, not the scraper.</strong> The data
+  source is a swappable component. Matching, ranking and explanation work identically
+  whether profiles come from LinkedIn, a paid vendor, or your own applicant database.
+  Adding a source is one class with two methods. The asset survives any decision about
+  where data comes from.
+</p>
+
+<p>
+  <strong>2. Every score is explainable and reproducible.</strong> No black box. A candidate
+  scoring 92 has a stored breakdown showing exactly which component contributed what, and
+  the rules are versioned, so a score from six months ago still means something. This
+  matters commercially and legally — automated decisions about people need to be
+  defensible.
+</p>
+
+<p>
+  <strong>3. The LinkedIn path is the riskiest component.</strong> It breaches LinkedIn's
+  terms and gets accounts restricted — twice so far. The code takes that seriously: a hard
+  hourly cap, manual sign-in, no stored passwords, and an account-rotation path. But no
+  amount of engineering makes it safe, and section 14 is the honest recommendation.
+</p>
+</section>
+
+<section>
+<h2>2. What a recruiter actually does</h2>
+
+<ol>
+  <li><strong>Describe the role.</strong> Job title, optional keywords, qualifications,
+      minimum experience, location, employers, graduation-year window.</li>
+  <li><strong>The search runs in the background.</strong> A browser opens on their own
+      machine; the first run of the day asks them to sign in to LinkedIn by hand. Progress
+      streams live.</li>
+  <li><strong>Read the ranked results.</strong> Each candidate shows a match score, the
+      four-part breakdown, matched and missing keywords, and plain-English reasons.</li>
+  <li><strong>Save and export.</strong> Shortlist to a saved list, or straight to CSV.</li>
+</ol>
+
+<div class="box">
+  <span class="lbl">The one field people get wrong</span>
+  <p>
+    <strong>Critical skills are pass/fail, and separate entries mean <em>all</em> of
+    them.</strong> Three entries — CPA, ACCA, ESAA — requires a candidate to hold all
+    three, which is nobody. To accept any of several qualifications, put them in one entry:
+    <code>CPA / ACCA / ESAA</code>. The form now shows the logic as it is typed and warns
+    when an unintended "and" has been built.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>3. Architecture</h2>
+
+<pre>  Server (shared)                      Recruiters' laptops
+  ┌────────────────────────┐          ┌──────────────────────────┐
+  │ Caddy    TLS           │          │ Worker → own queue       │
+  │ Next.js  web app       │          │   own LinkedIn account   │
+  │ FastAPI  API           │ ◄─ SSH ─►│   own hourly budget      │
+  │ Postgres shared data   │  tunnel  │   drives the browser     │
+  │ Redis    job queue     │          └──────────────────────────┘
+  └────────────────────────┘</pre>
+
+<p>
+  <strong>Why the split.</strong> Sign-in and CAPTCHAs are cleared by a person in a visible
+  browser window. A server has no screen, so the scraper cannot live there. Everything
+  shared — the database, the web app, the queue — does.
+</p>
+
+<p>
+  <strong>Why per-recruiter queues.</strong> A search runs only on its owner's laptop.
+  Celery's default hands any job to any free worker, which here would load one recruiter's
+  LinkedIn session into a colleague's browser on a different IP — unusable, and close to
+  the textbook signal of a stolen account.
+</p>
+
+<table>
+  <tr><th style="width:26%">Piece</th><th>Why</th></tr>
+  <tr><td>FastAPI</td><td>Typed, async, automatic API documentation.</td></tr>
+  <tr><td>Celery + Redis</td><td>Searches take minutes; they cannot run inside a web request.</td></tr>
+  <tr><td>PostgreSQL</td><td>Shared candidate pool, so two recruiters never pay twice to collect the same person.</td></tr>
+  <tr><td>Next.js</td><td>Server rendering plus a live progress stream.</td></tr>
+  <tr><td>Playwright</td><td>Drives a real browser — the only way to read a site built for humans.</td></tr>
+  <tr><td>Supabase</td><td>Authentication only. No candidate data goes there.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4. The search pipeline</h2>
+
+<p>Six stages. If you can narrate these, you can answer almost any question about behaviour.</p>
+
+<table>
+  <tr><th style="width:20%">Stage</th><th>What happens</th></tr>
+  <tr><td><strong>1. Search</strong></td><td>Only the job title goes in the search box. Employer and location are applied through LinkedIn's own filters, which restrict server-side so unqualified people are never opened.</td></tr>
+  <tr><td><strong>2. Pre-filter</strong></td><td>Deliberately timid — discards a card only when it clearly contradicts a stated requirement. A false negative here is invisible and unrecoverable; a false positive costs one page load.</td></tr>
+  <tr><td><strong>3. Fetch</strong></td><td>Checks the cache first. A profile collected in the last week is reused and costs nothing — no page load, no budget, no exposure.</td></tr>
+  <tr><td><strong>4. Score</strong></td><td>Four weighted components. See section 5.</td></tr>
+  <tr><td><strong>5. Filter</strong></td><td>Hard requirements: qualifications, employer, experience, career stage, score threshold.</td></tr>
+  <tr><td><strong>6. Store</strong></td><td>Ranked and written with the score breakdown, the reasons, and the version of the rules used.</td></tr>
+</table>
+
+<div class="box ok">
+  <span class="lbl">Two behaviours worth knowing by heart</span>
+  <p>
+    <strong>Partial results beat failed searches.</strong> If the hourly budget runs out
+    mid-search, or the account is restricted, or the machine dies — everything collected so
+    far is kept and stored. Because profiles are cached, re-running picks up where it left
+    off rather than paying again.
+  </p>
+  <p style="margin-top:6px">
+    <strong>One bad profile does not kill a search</strong>, but several in a row stop it.
+    A single unreadable profile is skipped; three consecutive failures mean something
+    systemic — an expired session, a layout change — and continuing would spend the rest of
+    an hourly budget repeating one failure.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>5. The matching engine</h2>
+
+<p>Everything else is plumbing. This is the part that produces the number a recruiter acts on.</p>
+
+<table>
+  <tr><th style="width:17%">Component</th><th style="width:11%">Weight</th><th>How it is computed</th></tr>
+  <tr><td><strong>Title</strong></td><td class="num">30%</td><td>Split into <em>what the job is</em> and <em>how senior it is</em>, scored separately. The domain is a gate: no evidence of the work scores zero, however senior. Judged across the whole career.</td></tr>
+  <tr><td><strong>Keywords</strong></td><td class="num">30%</td><td>Fraction found in the candidate's name, headline, job titles, skills and certifications. Tolerates word forms — "vendor management" matches <em>Vendor Manager</em>.</td></tr>
+  <tr><td><strong>Experience</strong></td><td class="num">30%</td><td>Total years against the minimum, capped. Overlapping roles merged and career gaps excluded, so nobody is credited twice for two jobs at once.</td></tr>
+  <tr><td><strong>Location</strong></td><td class="num">10%</td><td>A preference, not a filter, unless the strict switch is on.</td></tr>
+</table>
+
+<p>
+  Any component left blank is dropped and its weight redistributed. Nobody is marked down
+  for failing a requirement that was never set — which is what makes the optional fields
+  genuinely optional.
+</p>
+
+<h3>What v4 fixed, and why it took real data to find</h3>
+
+<div class="box ok">
+  <span class="lbl">Three defects, all found by measuring rather than reading the code</span>
+  <p>
+    <strong>1. "Manager" is not a job.</strong> A search for <em>external audit manager</em>
+    returned Finance Managers, because both share a word that describes a <em>level</em> and
+    appears in every hierarchy. Domain and seniority are now separate, and the domain is a
+    gate.
+  </p>
+  <p style="margin-top:6px">
+    <strong>2. A self-declared skill tag is not a career.</strong> Six candidates cleared
+    the gate on a LinkedIn tag reading "External Audit" with no supporting job history.
+    Skills now count for keyword matching, not for the profession gate.
+  </p>
+  <p style="margin-top:6px">
+    <strong>3. At an audit firm, external audit is called "Audit".</strong> The most
+    serious. Demanding the literal word discarded <strong>28 audit managers at the exact
+    four firms the recruiter asked for</strong>. An unqualified audit role now reads as
+    external audit unless the career says "internal" — which internal auditors always do,
+    because theirs is the variant needing a label.
+  </p>
+</div>
+
+<h3>Measured on 237 real profiles</h3>
+
+<table>
+  <tr><th style="width:44%">Search</th><th style="width:19%">Before</th><th style="width:19%">Now</th><th>Rejected</th></tr>
+  <tr><td>external audit manager</td><td class="num">237</td><td class="num">72</td><td class="num"><strong>70%</strong></td></tr>
+  <tr><td>financial reporting supervisor</td><td class="num">237</td><td class="num">49</td><td class="num"><strong>79%</strong></td></tr>
+  <tr><td>finance manager</td><td class="num">237</td><td class="num">91</td><td class="num"><strong>62%</strong></td></tr>
+</table>
+
+<p>
+  The most specific request cuts hardest, the broadest cuts least — the pattern that shows
+  the gate discriminates rather than simply rejecting. Full detail in the companion
+  document, <em>Matching Accuracy, Measured</em>.
+</p>
+
+<div class="box">
+  <span class="lbl">Know this for the room</span>
+  <p>
+    <strong>CPA is the American qualification.</strong> Across the 237 profiles: CPA 42,
+    ACCA 21, DipIFR 16, CIA 8, ESAA 5. For Egypt and Saudi Arabia,
+    <code>CPA / ACCA / ESAA</code> is the honest default and CPA alone is a US filter.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>6. Telling the truth about failure</h2>
+
+<p>
+  This is the part that separates a tool recruiters keep using from one they abandon, and it
+  was the largest single piece of recent work.
+</p>
+
+<p>
+  A search used to have two outcomes: it finished, or it crashed. Anything in between — a
+  filter that never reached LinkedIn, a session that expired half-way, a results page that
+  did not render — <em>finished</em>, and produced the same message:
+</p>
+
+<pre>"No candidates matched. Try lowering the minimum score or experience."</pre>
+
+<p>
+  That sentence blames the recruiter's criteria for a technical failure. A recruiter told it
+  twice concludes the market is empty, or the tool does not work, and they are right to.
+</p>
+
+<table>
+  <tr><th style="width:38%">What happened</th><th>What the recruiter is told now</th></tr>
+  <tr><td>Nobody matched</td><td>Which filters rejected people and how many — <em>"8x works at a different employer, 2x missing a required qualification"</em></td></tr>
+  <tr><td>A filter could not be applied</td><td><em>"These results are not what you asked for"</em>, above the results, plus how to work around it</td></tr>
+  <tr><td>Hourly limit reached</td><td>That it was cut short, that the criteria are not the problem, and when it resumes</td></tr>
+  <tr><td>Account restricted</td><td>That it stopped and that collected work was kept</td></tr>
+  <tr><td>Their machine died</td><td>That it stopped unexpectedly and re-running will not repeat the cost</td></tr>
+</table>
+
+<div class="box ok">
+  <span class="lbl">The principle</span>
+  <p>
+    <strong>"No mistakes" is not achievable</strong> — the data source is someone else's
+    website and it will change without notice. What is achievable, and what is now built:
+    <em>the app never presents an unreliable answer as a reliable one.</em>
+  </p>
+</div>
+
+<h3>And when the machine simply vanishes</h3>
+
+<p>
+  A worker that dies mid-search used to leave the search saying "running" for ever. A sweep
+  now marks abandoned runs failed, measured from the last progress update, so a slow search
+  is never reaped out from under itself. Job redelivery is disabled deliberately: re-running
+  a search re-opens profiles, re-spending budget that takes an hour to refill, and would
+  collide with the results the first attempt already stored.
+</p>
+</section>
+
+<section>
+<h2>7. Where the data comes from</h2>
+
+<table>
+  <tr><th style="width:22%">Source</th><th style="width:16%">Status</th><th>Notes</th></tr>
+  <tr><td><strong>Demo data</strong></td><td><span class="tag g">Working</span></td><td>Fixtures. No account, no network, no cost. What you demonstrate with.</td></tr>
+  <tr><td><strong>LinkedIn</strong></td><td><span class="tag a">Working, risky</span></td><td>Collected by us with a recruiter's own account. Breaches the terms. Two accounts restricted so far.</td></tr>
+  <tr><td><strong>Indeed</strong></td><td><span class="tag a">Built, unproven</span></td><td>Wired and tested, but its extraction cannot be verified without a paid employer account.</td></tr>
+  <tr><td><strong>Licensed vendor</strong></td><td><span class="tag r">Not chosen</span></td><td>The decision in section 14. Removes every risk above at once.</td></tr>
+</table>
+
+<h3>How the scraping is kept survivable</h3>
+
+<table>
+  <tr><th style="width:26%">Layer</th><th>What it does</th></tr>
+  <tr><td><strong>The volume cap</strong></td><td>The control that actually matters. A hard hourly ceiling, counted in a rolling window persisted to disk so it survives restarts. Volume is what abuse detection keys on.</td></tr>
+  <tr><td><strong>Manual sign-in</strong></td><td>The app never types a password. A person signs in and clears the CAPTCHA. There are no stored credentials to leak.</td></tr>
+  <tr><td><strong>Human behaviour</strong></td><td>Curved pointer paths, inertial scrolling, irregular pacing with pauses, honeypot checks before clicking.</td></tr>
+  <tr><td><strong>Fingerprint consistency</strong></td><td>One stable machine identity per account, distinct between accounts — so a restriction on one does not link to the next.</td></tr>
+</table>
+
+<div class="box warn">
+  <span class="lbl">The ceiling, stated plainly</span>
+  <p>
+    Throughput scales with recruiters, not with hardware: each account has its own hourly
+    allowance. Five recruiters is five times the rate — and five personal accounts at risk.
+    That is the trade this design makes, and it is the reason section 14 exists.
+  </p>
+</div>
+</section>
+
+<section>
+<h2>8. Quality: what 419 tests cover</h2>
+
+<table>
+  <tr><th style="width:34%">Area</th><th>What is pinned</th></tr>
+  <tr><td>Scoring and filtering</td><td>Every component, the weights, the domain gate, credential alternatives, the employer guarantee.</td></tr>
+  <tr><td>Experience maths</td><td>Overlapping roles, career gaps, a dozen date formats.</td></tr>
+  <tr><td>The truth-telling</td><td>That a degraded run cannot report itself as an ordinary empty one; that repeated failures stop a run.</td></tr>
+  <tr><td>Failure recovery</td><td>Abandoned searches reach a terminal state; a slow one is not reaped.</td></tr>
+  <tr><td>Data protection</td><td>Deletion removes every copy; retention never deletes work in use; one recruiter cannot read another's sourcing.</td></tr>
+  <tr><td>Readiness</td><td>That it fails when a dependency is down — a health check that cannot fail is worse than none.</td></tr>
+</table>
+
+<h3>What is not tested, stated honestly</h3>
+
+<p>
+  <strong>The scraper's selectors.</strong> They depend on LinkedIn's live markup, which no
+  test can pin — a test would only assert that today's HTML looks like today's HTML. This is
+  covered by debug dumps written on failure and by the degraded reporting, not by tests, and
+  it is the part most likely to break.
+</p>
+</section>
+
+<section>
+<h2>9. Data protection and retention</h2>
+
+<p>
+  The system stores real people's professional histories. Three obligations, all now
+  implemented rather than promised:
+</p>
+
+<table>
+  <tr><th style="width:30%">Obligation</th><th>How it is met</th></tr>
+  <tr><td><strong>Deletion on request</strong></td><td>A candidate can be erased: their profile, every search result referencing them, and every recruiter's saved copy. Logged, because the record that would prove the request was honoured is the one being destroyed.</td></tr>
+  <tr><td><strong>Retention limit</strong></td><td>Profiles nothing references are deleted after six months. Previously nothing ever removed a candidate — the cache window only re-scraped them.</td></tr>
+  <tr><td><strong>Data minimisation</strong></td><td>The raw collected payload is discarded once a profile is old enough to be re-fetched rather than reused.</td></tr>
+  <tr><td><strong>Access control</strong></td><td>A recruiter can read candidates from their own searches and saved lists. Profiles are shared internally for efficiency but not readable by id alone.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>10. Deployment and operations</h2>
+
+<p>
+  The server runs five containers behind TLS: web app, API, Postgres, Redis and a reverse
+  proxy that obtains its own certificate. Database and queue are bound to loopback and
+  reached from recruiters' laptops through an SSH tunnel — nothing but ports 80 and 443 is
+  exposed.
+</p>
+
+<table>
+  <tr><th style="width:32%">Operational concern</th><th>How it is handled</th></tr>
+  <tr><td>Is it actually working?</td><td>A readiness endpoint that checks the database and queue and returns an error when either is down. Liveness is separate and dependency-free, so a blip does not get a healthy process killed.</td></tr>
+  <tr><td>Setting up a laptop</td><td>A preflight script checks Python, the browser, the tunnel, the state directory and the power settings, and prints the fix for each failure.</td></tr>
+  <tr><td>Diagnosing a bad search</td><td>The worker writes a dated log file — the only place a stack trace is captured anywhere in the system.</td></tr>
+  <tr><td>When something breaks</td><td>A runbook starting from the report you will actually get: "my search did nothing", which now has six distinguishable causes.</td></tr>
+  <tr><td>Backups</td><td>A nightly dump with retention, empty-dump detection, and optional off-site copy. It must be installed and rehearsed — an untested backup is an assumption.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>11. Cost</h2>
+
+<table>
+  <tr><th style="width:34%">Item</th><th style="width:22%">Cost</th><th>Notes</th></tr>
+  <tr><td>Server</td><td class="num">~€5–10/mo</td><td>2 vCPU / 4 GB is ample.</td></tr>
+  <tr><td>Domain</td><td class="num">~€10/yr</td><td>Or free via a dynamic-DNS subdomain.</td></tr>
+  <tr><td>Authentication</td><td class="num">Free</td><td>Free tier covers a company's recruiters comfortably.</td></tr>
+  <tr><td>LinkedIn data</td><td class="num">"Free"</td><td>Paid in account risk and unplanned repair work, not money.</td></tr>
+  <tr><td>Licensed data</td><td class="num">To be quoted</td><td>The decision in section 14.</td></tr>
+  <tr><td>AI matching</td><td class="num">Optional</td><td>Off by default; costs per candidate when on.</td></tr>
+</table>
+
+<p>
+  Infrastructure is close to free. The real cost is the data, and today it is being paid in
+  a currency that does not appear on an invoice.
+</p>
+</section>
+
+<section>
+<h2>12. Legal and compliance</h2>
+
+<p>
+  <strong>Scraping LinkedIn breaches its User Agreement.</strong> Raise this yourself rather
+  than let it be discovered. Three concrete consequences:
+</p>
+
+<ol>
+  <li><strong>Account restriction.</strong> Happened twice. Recoverable only by the account's
+      owner, usually with identity documents.</li>
+  <li><strong>It becomes the company's breach.</strong> Rolling out company-wide moves this
+      from one person's account to the company, at company direction, using employees'
+      personal accounts.</li>
+  <li><strong>Personal data obligations.</strong> Collecting professional histories at scale
+      carries them regardless of source. Section 9 covers what is built.</li>
+</ol>
+
+<p style="font-size:9pt;color:var(--muted);margin-top:12px">
+  This document is engineering analysis, not legal advice. A lawful basis and
+  jurisdiction-specific obligations should be confirmed with counsel before processing real
+  candidate data at scale.
+</p>
+</section>
+
+<section>
+<h2>13. Known limitations</h2>
+
+<table>
+  <tr><th style="width:30%">Limitation</th><th style="width:11%">Severity</th><th>Detail</th></tr>
+  <tr>
+    <td><strong>Scraping does not scale</strong></td><td><span class="tag r">High</span></td>
+    <td>A fixed hourly ceiling per account, and each account is a person's own. Structural, not a tuning problem.</td>
+  </tr>
+  <tr>
+    <td><strong>Extraction will break</strong></td><td><span class="tag r">High</span></td>
+    <td>Depends on LinkedIn's markup. Twice already. Debug dumps make repair quick, but it is unplanned work on someone else's schedule.</td>
+  </tr>
+  <tr>
+    <td><strong>The employer filter needs a manual step</strong></td><td><span class="tag a">Medium</span></td>
+    <td>Restricting to named firms works reliably by pasting a LinkedIn URL — ten seconds. Driving the filter panel automatically is unproven, and the app says so when it fails.</td>
+  </tr>
+  <tr>
+    <td><strong>No labelled accuracy benchmark</strong></td><td><span class="tag a">Medium</span></td>
+    <td>About an hour of a recruiter's time would produce a defensible single figure. Until then, only the specific measured results can be claimed.</td>
+  </tr>
+  <tr>
+    <td><strong>Binary location scoring</strong></td><td><span class="tag a">Medium</span></td>
+    <td>No concept of distance or commuting range — "Berlin" and "Munich" are equally wrong.</td>
+  </tr>
+  <tr>
+    <td><strong>Not yet deployed</strong></td><td><span class="tag a">Medium</span></td>
+    <td>Runs on a developer machine. Deployment is documented and needs a server and about an hour.</td>
+  </tr>
+  <tr>
+    <td><strong>Accounts burn faster than they rotate</strong></td><td><span class="tag r">High</span></td>
+    <td>Rotation defeats device correlation only. The IP is unchanged, so each replacement is more exposed than the last. A supply problem, not a bug.</td>
+  </tr>
+</table>
+</section>
+
+<section>
+<h2>14. Where I would take it next</h2>
+
+<h3>Immediate — days, independent of any strategic decision</h3>
+<ul>
+  <li>Deploy to a small server and run it for two weeks with one or two recruiters.</li>
+  <li>Label 50 candidates to get a defensible accuracy figure.</li>
+  <li>Install and <em>rehearse</em> the backup restore.</li>
+</ul>
+
+<h3>Short term — weeks</h3>
+<ul>
+  <li>Finish the automatic employer filter, or accept the paste-a-URL step as the supported path.</li>
+  <li>Roll out laptop by laptop, each with the preflight check.</li>
+</ul>
+
+<h3>Strategic — the decision that unblocks everything</h3>
+
+<div class="ask">
+  <h3>Choose where candidate data comes from</h3>
+  <p>
+    Everything difficult about this system traces to one choice: we collect the data
+    ourselves from a site that does not want us to. That is what caps throughput, what puts
+    recruiters' personal accounts at risk, what makes it a terms breach, and what breaks
+    without warning.
+  </p>
+  <p>
+    Buying from a licensed provider removes all four at once, and
+    <strong>nothing else about the product changes</strong> — the source was built as a
+    replaceable component from the start, precisely so this decision could be made late and
+    commercially rather than early and technically.
+  </p>
+  <p style="margin-top:8px">
+    <strong>The ask:</strong> approval to evaluate providers and a budget range, plus a
+    decision on whether recruiters' personal LinkedIn accounts may be used meanwhile.
+  </p>
+</div>
+
+<div class="foot">
+  Prepared 14 August 2026 against branch <code>main</code>. Accuracy figures come from
+  re-running the production code over the 237 candidate profiles in the application
+  database, plus one live LinkedIn search. 419 automated checks passing.
+</div>
+</section>
+
+</body>
+</html>
