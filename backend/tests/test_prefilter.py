@@ -50,7 +50,24 @@ def test_remote_never_discarded_on_location():
 
 def test_company_mismatch_discarded():
     hit = SearchHit(source_profile_url="u", current_company="Globex")
-    criteria = SearchCriteria(job_title="Backend Engineer", company="Acme")
+    criteria = SearchCriteria(job_title="Backend Engineer", companies=["Acme"])
     keep, reason = passes_prefilter(hit, criteria)
     assert keep is False
     assert reason and "Company" in reason
+
+
+def test_any_of_several_requested_employers_is_kept():
+    """Filtering on the Big Four must keep somebody at any one of them."""
+    hit = SearchHit(source_profile_url="u", current_company="Ernst & Young LLP")
+    criteria = SearchCriteria(
+        job_title="Audit Manager", companies=["Deloitte", "PwC", "EY", "KPMG"]
+    )
+    assert passes_prefilter(hit, criteria)[0]
+
+
+def test_a_card_without_a_company_is_never_discarded():
+    # The pre-filter runs on shallow card data and must only reject clear
+    # mismatches; a missing employer is not evidence of the wrong employer.
+    hit = SearchHit(source_profile_url="u", current_company=None)
+    criteria = SearchCriteria(job_title="Audit Manager", companies=["Deloitte"])
+    assert passes_prefilter(hit, criteria)[0]

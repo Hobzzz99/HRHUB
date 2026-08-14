@@ -41,7 +41,7 @@ def _build_prompt(profile: RawProfile, criteria: SearchCriteria) -> str:
         {
             "role": {
                 "job_title": criteria.job_title,
-                "required_skills": criteria.skills,
+                "required_keywords": criteria.keywords,
                 "min_experience_years": criteria.min_experience,
                 "location": criteria.location,
                 "keywords": criteria.keywords,
@@ -89,7 +89,7 @@ async def enhance_score(
     ai_missing = [str(m) for m in data.get("missing", []) if m]
 
     merged_reasons = list(dict.fromkeys([*scored.reasons, *ai_reasons]))
-    merged_missing = list(dict.fromkeys([*scored.missing_skills, *ai_missing]))
+    merged_missing = list(dict.fromkeys([*scored.missing_keywords, *ai_missing]))
 
     logger.info("ai_enhanced", deterministic=scored.match_score, semantic=semantic)
 
@@ -97,7 +97,7 @@ async def enhance_score(
         update={
             "match_score": blended,
             "reasons": merged_reasons,
-            "missing_skills": merged_missing,
+            "missing_keywords": merged_missing,
             # Record that AI contributed, for reproducibility/analytics.
             "score_version": f"{scored.score_version}+ai",
         }

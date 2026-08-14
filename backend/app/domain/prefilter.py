@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from app.domain import companies as companies_mod
 from app.domain.models import SearchCriteria, SearchHit
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -38,13 +39,16 @@ def passes_prefilter(hit: SearchHit, criteria: SearchCriteria) -> tuple[bool, st
         if not remote and req and loc and not (req & loc):
             return False, f"Location '{hit.location}' does not match '{criteria.location}'"
 
-    # Company: only when required and both present with no overlap.
-    if criteria.company and hit.current_company:
-        want = _tokens(criteria.company)
-        have = _tokens(hit.current_company)
-        if want and have and not (want & have):
-            return False, (
-                f"Company '{hit.current_company}' does not match '{criteria.company}'"
-            )
+    # Employer. Normally LinkedIn has already filtered server-side by company
+    # id, in which case this agrees and changes nothing. It earns its place when
+    # that facet could not be applied: filtering the card here still happens
+    # *before* the profile is opened, so a wrong employer costs no scrape budget.
+    if criteria.companies and not companies_mod.matches(
+        criteria.companies, hit.current_company
+    ):
+        return False, (
+            f"Company '{hit.current_company}' is not one of "
+            + ", ".join(criteria.companies)
+        )
 
     return True, None

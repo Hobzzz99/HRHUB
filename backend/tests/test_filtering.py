@@ -59,7 +59,7 @@ def test_discards_below_score_threshold():
     profile = _profile(skills=[], current_title="Chef")
     criteria = SearchCriteria(
         job_title="Backend Engineer",
-        skills=["Python", "FastAPI"],
+        keywords=["Python", "FastAPI"],
         min_match_score=50,
     )
     scored = score_candidate(profile, criteria, total_years=6.0)

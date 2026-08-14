@@ -64,12 +64,23 @@ class SearchCriteria(BaseModel):
     """Recruiter requirements — used for searching, scoring, and filtering."""
 
     job_title: str
-    skills: list[str] = Field(default_factory=list)
     critical_skills: list[str] = Field(default_factory=list)
     location: str | None = None
     min_experience: float = 0.0
+    #: Career-stage window, expressed the way it appears on a profile. Tested
+    #: against the candidate's *earliest* graduation — see domain/education.py.
+    #: Discard anyone whose career shows no evidence of the job title's
+    #: subject. Default on: a search for "external audit manager" returning a
+    #: finance manager is not a near miss, it is a wrong answer.
+    require_title_match: bool = True
+    graduation_year_from: int | None = None
+    graduation_year_to: int | None = None
     keywords: list[str] = Field(default_factory=list)
-    company: str | None = None
+    companies: list[str] = Field(default_factory=list)
+    #: LinkedIn company ids, taken straight from a search URL the recruiter
+    #: pasted. Exact, because LinkedIn resolved them — used in preference to
+    #: driving the filter panel for `companies`.
+    company_ids: list[str] = Field(default_factory=list)
     industry: str | None = None
     max_results: int = 25
     min_match_score: float = 0.0
@@ -86,18 +97,17 @@ class ScoreBreakdown(BaseModel):
     """Sub-scores as percentages (0-100)."""
 
     title: float = 0.0
-    skills: float = 0.0
+    keywords: float = 0.0
     experience: float = 0.0
     location: float = 0.0
-    education: float = 0.0
 
 
 class ScoredCandidate(BaseModel):
     match_score: float  # 0-100
     score_version: str
     breakdown: ScoreBreakdown
-    matched_skills: list[str] = Field(default_factory=list)
-    missing_skills: list[str] = Field(default_factory=list)
+    matched_keywords: list[str] = Field(default_factory=list)
+    missing_keywords: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
     total_experience_years: float = 0.0
 

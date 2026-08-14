@@ -1,8 +1,19 @@
 """Weighted candidate scoring.
 
-Score = title 30% + skills 30% + experience 20% + location 10% + education 10%.
+Score = title 30% + keywords 30% + experience 30% + location 10%.
 The weights are a **named, versioned profile** (`SCORE_VERSION`); every stored
 result records the version so historical scores stay reproducible and comparable.
+
+``v2`` replaced ``v1``'s skills-list matching with keyword matching against the
+candidate's headline and job titles, raised experience from 20% to 30%, and
+dropped the education component entirely.
+
+``v3`` rewrote the title component (`domain/job_titles.py`). v2 compared the
+required title to the candidate's as a bag of words, so **Finance Manager**
+scored 33% against *external audit manager* on the shared word "manager" — a
+seniority word every management title contains. v3 separates what the job *is*
+from how senior it is, judges the job across the candidate's whole career rather
+than their current line, and treats the subject as a gate rather than a weight.
 """
 
 from __future__ import annotations
@@ -10,7 +21,8 @@ from __future__ import annotations
 import re
 
 from app.domain import experience as experience_mod
-from app.domain import skills as skills_mod
+from app.domain import job_titles as job_titles_mod
+from app.domain import keywords as keywords_mod
 from app.domain.models import (
     RawProfile,
     ScoreBreakdown,
@@ -18,14 +30,13 @@ from app.domain.models import (
     SearchCriteria,
 )
 
-SCORE_VERSION = "v1"
+SCORE_VERSION = "v4"
 
 WEIGHTS = {
     "title": 0.30,
-    "skills": 0.30,
-    "experience": 0.20,
+    "keywords": 0.30,
+    "experience": 0.30,
     "location": 0.10,
-    "education": 0.10,
 }
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -37,17 +48,6 @@ def _tokens(text: str | None) -> set[str]:
     if not text:
         return set()
     return {t for t in _TOKEN_RE.findall(text.lower()) if t not in _TITLE_STOPWORDS}
-
-
-def title_score(required_title: str, candidate_title: str | None,
-                headline: str | None) -> float:
-    """Token-overlap of the required title against the candidate's title/headline."""
-    required = _tokens(required_title)
-    if not required:
-        return 0.0
-    candidate = _tokens(candidate_title) | _tokens(headline)
-    overlap = len(required & candidate)
-    return overlap / len(required)
 
 
 def experience_score(total_years: float, min_experience: float) -> float:
@@ -66,16 +66,10 @@ def location_score(required: str | None, candidate: str | None) -> float:
     return 1.0 if req_tokens & cand_tokens else 0.0
 
 
-def education_score(profile: RawProfile) -> float:
-    has_education = bool(profile.education)
-    has_credentials = bool(profile.certifications or profile.licenses)
-    return 0.5 * has_education + 0.5 * has_credentials
-
-
 def _reasons(
     *,
     title: float,
-    skill_match: skills_mod.SkillMatch,
+    keyword_match: keywords_mod.KeywordMatch,
     total_years: float,
     criteria: SearchCriteria,
     location: float,
@@ -93,14 +87,47 @@ def _reasons(
     elif total_years > 0:
         reasons.append(f"{total_years:g} years experience")
 
-    if skill_match.matched:
-        shown = ", ".join(skill_match.matched[:5])
-        reasons.append(f"Has {shown}")
+    if keyword_match.matched:
+        shown = ", ".join(keyword_match.matched[:5])
+        reasons.append(f"Title mentions {shown}")
 
     if criteria.location and location >= 1.0:
         reasons.append("Location matches")
 
     return reasons
+
+
+def _stated_components(criteria: SearchCriteria) -> set[str]:
+    """Which components the recruiter actually asked for.
+
+    Job title is always stated — the form requires it. The rest are optional,
+    and leaving one blank means "I don't care", which is different from "every
+    candidate passes".
+    """
+    stated = {"title"}
+    if criteria.keywords:
+        stated.add("keywords")
+    if criteria.min_experience > 0:
+        stated.add("experience")
+    if criteria.location:
+        stated.add("location")
+    return stated
+
+
+def _weighted_total(scores: dict[str, float], *, stated: set[str]) -> float:
+    """Weighted average across the stated components only.
+
+    An unstated component is **dropped and its weight redistributed**, rather
+    than scored 1.0. Both approaches avoid penalising anyone for a criterion
+    nobody set, but awarding full marks hands every candidate the same free
+    points — which flattens the ranking and, worse, makes a score threshold mean
+    different things depending on which boxes were filled in. Redistributing
+    keeps 100 meaning "matched everything you asked for" in every case.
+    """
+    active = sum(WEIGHTS[name] for name in stated)
+    if active <= 0:  # defensive: title is always stated, so unreachable today
+        return 0.0
+    return sum(WEIGHTS[name] * scores[name] for name in stated) / active
 
 
 def score_candidate(
@@ -109,43 +136,43 @@ def score_candidate(
     *,
     total_years: float | None = None,
 ) -> ScoredCandidate:
-    """Score a single candidate against the recruiter's criteria (deterministic v1)."""
+    """Score a single candidate against the recruiter's criteria (deterministic v3)."""
     if total_years is None:
         total_years = experience_mod.compute_total_experience_years(profile.experience)
 
-    skill_match = skills_mod.match_skills(criteria.skills, profile.skills)
+    keyword_match = keywords_mod.match_keywords_in_profile(criteria.keywords, profile)
 
-    s_title = title_score(criteria.job_title, profile.current_title, profile.headline)
-    s_skills = skill_match.ratio
+    s_title = job_titles_mod.title_score(criteria.job_title, profile)
+    s_keywords = keyword_match.ratio
     s_experience = experience_score(total_years, criteria.min_experience)
     s_location = location_score(criteria.location, profile.location)
-    s_education = education_score(profile)
 
-    total = (
-        WEIGHTS["title"] * s_title
-        + WEIGHTS["skills"] * s_skills
-        + WEIGHTS["experience"] * s_experience
-        + WEIGHTS["location"] * s_location
-        + WEIGHTS["education"] * s_education
+    total = _weighted_total(
+        {
+            "title": s_title,
+            "keywords": s_keywords,
+            "experience": s_experience,
+            "location": s_location,
+        },
+        stated=_stated_components(criteria),
     )
 
     breakdown = ScoreBreakdown(
         title=round(s_title * 100, 1),
-        skills=round(s_skills * 100, 1),
+        keywords=round(s_keywords * 100, 1),
         experience=round(s_experience * 100, 1),
         location=round(s_location * 100, 1),
-        education=round(s_education * 100, 1),
     )
 
     return ScoredCandidate(
         match_score=round(total * 100, 1),
         score_version=SCORE_VERSION,
         breakdown=breakdown,
-        matched_skills=skill_match.matched,
-        missing_skills=skill_match.missing,
+        matched_keywords=keyword_match.matched,
+        missing_keywords=keyword_match.missing,
         reasons=_reasons(
             title=s_title,
-            skill_match=skill_match,
+            keyword_match=keyword_match,
             total_years=total_years,
             criteria=criteria,
             location=s_location,
