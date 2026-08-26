@@ -104,3 +104,31 @@ def test_cancelling_a_search_that_does_not_exist():
 def test_cancelled_is_a_terminal_state():
     """The live stream must stop polling, and the page must render results."""
     assert SearchStatus.CANCELLED.is_terminal
+
+
+class TestTheProviderNoticesToo:
+    """The runner's profile loop is not the only place a stop must be seen.
+
+    Finding profiles takes one to two minutes against LinkedIn, and it happens
+    *before* that loop. A recruiter who stopped a misclicked search used to wait
+    the whole of it while nothing noticed.
+    """
+
+    def test_a_provider_polls_the_check_it_was_given(self):
+        from app.providers.mock import MockProvider
+
+        provider = MockProvider()
+        assert provider.cancel_requested() is False
+
+        stopped = False
+        provider.set_cancel_check(lambda: stopped)
+        assert provider.cancel_requested() is False
+
+        stopped = True
+        assert provider.cancel_requested() is True
+
+    def test_a_provider_with_no_check_never_reports_a_cancellation(self):
+        """Providers that are never given one must not stop themselves."""
+        from app.providers.mock import MockProvider
+
+        assert MockProvider().cancel_requested() is False

@@ -285,8 +285,34 @@ async def _collect(
     started: float,
 ) -> None:
     """Search, then open and score profiles until done or stopped."""
+
+    def stopped() -> bool:
+        # Re-read rather than trusting the object: the cancel is written by the
+        # API, in another process, on another machine.
+        db.refresh(search)
+        return bool(search.cancel_requested)
+
+    provider.set_cancel_check(stopped)
+
     async with provider:
         hits = await provider.search(criteria)
+
+        # Before the first profile, and therefore before a single slot of the
+        # hourly budget is spent. Stopping a misclicked search here costs
+        # nothing at all.
+        if stopped():
+            logger.info("search_cancelled_before_fetching", search_id=str(search.id))
+            run.cancelled = True
+            _set_progress(
+                db,
+                search,
+                found=len(hits),
+                to_process=0,
+                processed=0,
+                kept=0,
+                note="Stopped before any profile was opened. No budget was spent.",
+            )
+            return
 
         # Conservative pre-filter on cheap card data.
         survivors = [hit for hit in hits if passes_prefilter(hit, criteria)[0]]

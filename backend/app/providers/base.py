@@ -90,6 +90,22 @@ class CandidateProvider(ABC):
             self.__dict__["_degradations"] = existing
         return existing
 
+    def set_cancel_check(self, check: Callable[[], bool]) -> None:
+        """Install the runner's "has the recruiter stopped this?" predicate.
+
+        Providers poll it wherever they already have control — between result
+        pages, between profiles. Without it the only place a cancellation was
+        noticed was the runner's profile loop, and the search phase before that
+        loop takes one to two minutes against LinkedIn: pressing Stop right
+        after a misclick did nothing at all for the length of that phase.
+        """
+        self.__dict__["_cancel_check"] = check
+
+    def cancel_requested(self) -> bool:
+        """True when the run should stop at the next safe point."""
+        check = self.__dict__.get("_cancel_check")
+        return bool(check and check())
+
     def degraded(self, kind: Degradation, detail: str) -> None:
         """Record that the run could not do something it was asked to.
 

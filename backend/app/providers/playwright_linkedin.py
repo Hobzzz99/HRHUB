@@ -638,6 +638,12 @@ class PlaywrightLinkedInProvider(CandidateProvider):
         page_num = 1
         facets: dict[str, list[str]] = {}
         while len(hits) < criteria.max_results and page_num <= 10:
+            # Each page is a fresh navigation, so this is the natural place to
+            # notice. Finding profiles takes one to two minutes; without this
+            # check a recruiter who stopped a misclicked search waited all of it.
+            if self.cancel_requested():
+                logger.info("linkedin_search_cancelled", page=page_num)
+                break
             if page_num == 1:
                 await self._open_first_results_page(page, actor, keywords)
                 # Narrowing happens here, on the results page, through LinkedIn's
