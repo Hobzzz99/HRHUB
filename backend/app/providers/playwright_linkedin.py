@@ -71,6 +71,7 @@ from app.providers.base import (
 from app.providers.browser_pool import BrowserPool
 from app.providers.company_filter import (
     COMPANY,
+    LOCATION,
     CompanyIdCache,
     Facet,
     apply_facet,
@@ -714,10 +715,16 @@ class PlaywrightLinkedInProvider(CandidateProvider):
     ) -> dict[str, list[str]]:
         """Drive the filter panels for a plan, returning the ids each resolved to."""
         resolved: dict[str, list[str]] = {}
+        # Ids pasted from a LinkedIn URL are already resolved by LinkedIn, so
+        # they go straight into the query string and the panel is never touched.
+        # That path is reliable; driving the panel is not.
+        pasted = {
+            COMPANY.url_param: list(criteria.company_ids),
+            LOCATION.url_param: list(criteria.location_ids),
+        }
         for step in steps:
-            if step.facet is COMPANY and criteria.company_ids:
-                # Pasted from a LinkedIn URL, so LinkedIn already resolved them.
-                resolved[step.url_param] = list(criteria.company_ids)
+            if pasted.get(step.url_param):
+                resolved[step.url_param] = pasted[step.url_param]
                 continue
             ids = await self._facet_ids(page, actor, step.facet, step.values)
             if ids:

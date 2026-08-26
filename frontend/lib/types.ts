@@ -57,6 +57,7 @@ export interface Search {
   keywords: string[];
   companies: string[];
   company_ids: string[];
+  location_ids: string[];
   industry: string | null;
   max_results: number;
   min_match_score: number;
@@ -176,7 +177,11 @@ export interface SearchCreateInput {
   graduation_year_from?: number | null;
   graduation_year_to?: number | null;
   keywords: string[];
-  company?: string | null;
+  companies?: string[];
+  /** LinkedIn's own resolved ids, taken from a pasted search URL. The reliable
+   *  way to filter — LinkedIn picked the entities, so they cannot be wrong. */
+  company_ids?: string[];
+  location_ids?: string[];
   industry?: string | null;
   max_results: number;
   min_match_score: number;

@@ -69,11 +69,13 @@ def plan(criteria: SearchCriteria) -> list[FilterStep]:
     # turning it into a server-side filter would quietly promote it to a
     # requirement — hiding candidates the recruiter said they would still
     # consider.
-    if criteria.enforce_location and criteria.location:
+    # Pasted geo ids count as an explicit request whatever the strict switch
+    # says: the recruiter picked that location on LinkedIn itself.
+    if criteria.location_ids or (criteria.enforce_location and criteria.location):
         steps.append(
             FilterStep(
                 facet=LOCATION,
-                values=[criteria.location],
+                values=[criteria.location] if criteria.location else [],
                 give_up_order=2,  # released first
                 label="location",
             )

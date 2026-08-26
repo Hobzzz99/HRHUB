@@ -126,6 +126,9 @@ class Search(Base, TimestampMixin):
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
     companies: Mapped[list[str]] = mapped_column(JSON, default=list)
     company_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    #: LinkedIn geo ids from a pasted search URL, the location counterpart
+    #: of company_ids.
+    location_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     industry: Mapped[str | None] = mapped_column(String(255))
     max_results: Mapped[int] = mapped_column(Integer, default=25)
     min_match_score: Mapped[float] = mapped_column(Float, default=0.0)

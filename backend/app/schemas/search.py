@@ -21,6 +21,7 @@ class SearchCreate(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     companies: list[str] = Field(default_factory=list)
     company_ids: list[str] = Field(default_factory=list)
+    location_ids: list[str] = Field(default_factory=list)
     industry: str | None = None
     max_results: int = Field(default=25, ge=1, le=200)
     min_match_score: float = Field(default=0.0, ge=0, le=100)
@@ -50,6 +51,7 @@ class SearchRead(BaseModel):
     keywords: list[str]
     companies: list[str]
     company_ids: list[str]
+    location_ids: list[str]
     industry: str | None
     max_results: int
     min_match_score: float

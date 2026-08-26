@@ -19,15 +19,26 @@ import { TagInput } from "@/components/ui/tag-input";
 const BIG_FOUR = ["Deloitte", "PwC", "EY", "KPMG"] as const;
 
 /**
- * Pull LinkedIn's company ids out of a search URL, e.g.
- * `?currentCompany=%5B"9499295"%2C"1073"%5D` -> ["9499295", "1073"].
- * Used when the filter panel cannot be driven — LinkedIn has already resolved
- * these, so they cannot pick the wrong company entity.
+ * Pull LinkedIn's own resolved filter ids out of a search URL, e.g.
+ * `?currentCompany=%5B"9499295"%2C"1073"%5D&geoUrn=%5B"100459316"%5D`.
+ *
+ * This is the reliable way to filter: LinkedIn resolved these itself, so they
+ * cannot pick the wrong entity — "KPMG" and "KPMG Middle East" are different
+ * companies with different ids, and a country name is ambiguous where its geo
+ * id is not.
+ *
+ * Both parameters are read. Reading only `currentCompany` meant a recruiter who
+ * filtered by firm *and* country on LinkedIn got their companies applied and
+ * their location silently dropped — and the app then tried to drive the
+ * location panel itself, failed, and returned people from everywhere.
  */
-function companyIdsFromUrl(url: string): string[] {
-  const match = /currentCompany=([^&]+)/.exec(url);
-  if (!match) return [];
-  return decodeURIComponent(match[1]).match(/\d+/g) ?? [];
+function filterIdsFromUrl(url: string): { companies: string[]; locations: string[] } {
+  const ids = (param: string) => {
+    const match = new RegExp(`${param}=([^&]+)`).exec(url);
+    if (!match) return [];
+    return decodeURIComponent(match[1]).match(/\d+/g) ?? [];
+  };
+  return { companies: ids("currentCompany"), locations: ids("geoUrn") };
 }
 
 const schema = z.object({
@@ -41,6 +52,7 @@ const schema = z.object({
   graduation_year_to: z.string(),
   companies: z.array(z.string()),
   company_ids: z.array(z.string()),
+  location_ids: z.array(z.string()),
   industry: z.string(),
   max_results: z.coerce.number().min(1).max(200),
   min_match_score: z.coerce.number().min(0).max(100),
@@ -61,6 +73,7 @@ const defaults: FormValues = {
   graduation_year_to: "",
   companies: [],
   company_ids: [],
+  location_ids: [],
   industry: "",
   max_results: 25,
   min_match_score: 40,
@@ -99,8 +112,11 @@ export function SearchForm() {
     register,
     handleSubmit,
     control,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: defaults });
+  const locationIds = watch("location_ids");
 
   const onSubmit = handleSubmit(async (values) => {
     const search = await createSearch.mutateAsync({
@@ -258,16 +274,27 @@ export function SearchForm() {
                     render={({ field: idsField }) => (
                       <div className="space-y-1">
                         <Input
-                          placeholder="…or paste a LinkedIn search URL with the filter already applied"
-                          onChange={(e) =>
-                            idsField.onChange(companyIdsFromUrl(e.target.value))
-                          }
+                          placeholder="…or paste a LinkedIn search URL with the filters already applied"
+                          onChange={(e) => {
+                            const { companies, locations } = filterIdsFromUrl(
+                              e.target.value,
+                            );
+                            idsField.onChange(companies);
+                            setValue("location_ids", locations);
+                          }}
                         />
-                        {idsField.value.length > 0 ? (
+                        {idsField.value.length > 0 || locationIds.length > 0 ? (
                           <p className="text-xs text-success">
-                            Using {idsField.value.length} company filter
-                            {idsField.value.length === 1 ? "" : "s"} straight from
-                            LinkedIn ({idsField.value.join(", ")}).
+                            Using{" "}
+                            {[
+                              idsField.value.length > 0
+                                ? `${idsField.value.length} company filter${idsField.value.length === 1 ? "" : "s"}`
+                                : null,
+                              locationIds.length > 0 ? "the location filter" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" and ")}{" "}
+                            straight from LinkedIn.
                           </p>
                         ) : null}
                       </div>

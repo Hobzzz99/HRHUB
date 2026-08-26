@@ -81,6 +81,10 @@ class SearchCriteria(BaseModel):
     #: pasted. Exact, because LinkedIn resolved them — used in preference to
     #: driving the filter panel for `companies`.
     company_ids: list[str] = Field(default_factory=list)
+    #: LinkedIn geo ids, taken from a pasted search URL the same way company ids
+    #: are. Exact, because LinkedIn resolved them — "Saudi Arabia" as free text
+    #: is ambiguous, and its own id is not.
+    location_ids: list[str] = Field(default_factory=list)
     industry: str | None = None
     max_results: int = 25
     min_match_score: float = 0.0
