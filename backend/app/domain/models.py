@@ -72,6 +72,9 @@ class SearchCriteria(BaseModel):
     #: anything, plus the words external audit somewhere" are different
     #: requirements, and recruiters mean the first.
     experience_in_field: bool = True
+    #: Country whose citizenship the recruiter needs, judged from where the
+    #: candidate studied. Evidence, never proof — see domain/nationality.py.
+    nationality: str | None = None
     #: Career-stage window, expressed the way it appears on a profile. Tested
     #: against the candidate's *earliest* graduation — see domain/education.py.
     #: Discard anyone whose career shows no evidence of the job title's

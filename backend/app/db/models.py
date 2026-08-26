@@ -124,6 +124,7 @@ class Search(Base, TimestampMixin):
     #: Measure the experience bar against the field being searched for rather
     #: than the whole career.
     experience_in_field: Mapped[bool] = mapped_column(default=True, nullable=False)
+    nationality: Mapped[str | None] = mapped_column(String(64))
     graduation_year_from: Mapped[int | None] = mapped_column(Integer)
     graduation_year_to: Mapped[int | None] = mapped_column(Integer)
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)

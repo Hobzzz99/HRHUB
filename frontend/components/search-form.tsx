@@ -49,6 +49,7 @@ const schema = z.object({
   min_experience: z.coerce.number().min(0).max(50),
   require_title_match: z.boolean(),
   experience_in_field: z.boolean(),
+  nationality: z.string(),
   graduation_year_from: z.string(),
   graduation_year_to: z.string(),
   companies: z.array(z.string()),
@@ -71,6 +72,7 @@ const defaults: FormValues = {
   min_experience: 0,
   require_title_match: true,
   experience_in_field: true,
+  nationality: "",
   graduation_year_from: "",
   graduation_year_to: "",
   companies: [],
@@ -131,6 +133,7 @@ export function SearchForm() {
         ? Number(values.graduation_year_to)
         : null,
       industry: values.industry || null,
+      nationality: values.nationality || null,
     });
     router.push(`/search/${search.id}`);
   });
@@ -219,6 +222,18 @@ export function SearchForm() {
                   <CriticalSkillsExplainer terms={field.value} />
                 </>
               )}
+            />
+          </Field>
+
+          <Field
+            label="Nationality (optional)"
+            htmlFor="nationality"
+            hint="Worked out from where the candidate studied — LinkedIn has no nationality field, so this is evidence rather than proof, and the evidence is shown on each result. Never guessed from names. Anyone whose education is not listed is kept and marked unverified rather than discarded. Currently supports Saudi Arabia."
+          >
+            <Input
+              id="nationality"
+              placeholder="e.g. Saudi Arabia"
+              {...register("nationality")}
             />
           </Field>
 

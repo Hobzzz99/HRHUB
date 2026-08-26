@@ -20,6 +20,7 @@ from app.core.logging import get_logger
 from app.db.enums import ProviderAccountStatus, SearchStatus
 from app.db.models import Search, SearchResult
 from app.db.session import SessionLocal, session_scope
+from app.domain import nationality as nationality_mod
 from app.domain.filtering import apply_filters
 from app.domain.models import ScoredCandidate, SearchCriteria
 from app.domain.prefilter import passes_prefilter
@@ -353,6 +354,20 @@ async def _collect(
         return bool(search.cancel_requested)
 
     provider.set_cancel_check(stopped)
+
+    # Said once per run rather than per candidate: if we cannot judge this
+    # nationality at all, every profile would silently pass the filter and the
+    # shortlist would look filtered when it is not.
+    if criteria.nationality and not nationality_mod.can_assess(criteria.nationality):
+        run.degradations.append(
+            (
+                Degradation.FILTER_NOT_APPLIED.value,
+                f"Nationality could not be judged for {criteria.nationality} — this "
+                "is worked out from where a candidate studied, and there is no "
+                "university list for that country. Results are not filtered by "
+                "nationality.",
+            )
+        )
 
     async with provider:
         hits = await provider.search(criteria)

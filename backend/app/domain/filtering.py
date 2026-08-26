@@ -12,6 +12,7 @@ from app.domain import companies as companies_mod
 from app.domain import education as education_mod
 from app.domain import job_titles as job_titles_mod
 from app.domain import keywords as keywords_mod
+from app.domain import nationality as nationality_mod
 from app.domain import skills as skills_mod
 from app.domain.models import FilterDecision, RawProfile, ScoredCandidate, SearchCriteria
 
@@ -106,6 +107,28 @@ def apply_filters(
             reasons.append(
                 "No experience in: " + ", ".join(absent)
             )
+
+    # Nationality, judged from where they studied. LinkedIn has no nationality
+    # field, so this is evidence rather than fact — and the evidence travels
+    # with the decision so a recruiter can weigh it rather than trust it.
+    if criteria.nationality:
+        signal = nationality_mod.assess(profile, criteria.nationality)
+        if signal.unsupported:
+            # Not the candidate's problem, and not something to fail them for:
+            # we simply have no way to judge this country. The run reports it as
+            # a filter that could not be applied.
+            pass
+        elif signal.contradicted:
+            # Their education is readable and none of it is in the country. This
+            # is the only case confident enough to reject on.
+            reasons.append(
+                f"Studied outside {criteria.nationality} — no evidence of "
+                f"{criteria.nationality} nationality"
+            )
+        # signal.unknown falls through deliberately: no education on the profile
+        # means nothing to judge, and rejecting for that would discard more than
+        # half of every shortlist for a gap in extraction. Those candidates are
+        # kept and marked unverified in their reasons instead.
 
     # Career stage, read from the earliest graduation year on the profile.
     in_window, why = education_mod.in_range(

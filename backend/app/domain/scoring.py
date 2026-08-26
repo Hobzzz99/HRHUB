@@ -23,6 +23,7 @@ import re
 from app.domain import experience as experience_mod
 from app.domain import job_titles as job_titles_mod
 from app.domain import keywords as keywords_mod
+from app.domain import nationality as nationality_mod
 from app.domain.models import (
     RawProfile,
     ScoreBreakdown,
@@ -133,6 +134,23 @@ def _weighted_total(scores: dict[str, float], *, stated: set[str]) -> float:
     return sum(WEIGHTS[name] * scores[name] for name in stated) / active
 
 
+def _nationality_evidence(profile: RawProfile, criteria: SearchCriteria) -> list[str]:
+    """Why we think this person holds the nationality asked for.
+
+    Shown first, because it is the one judgement here the system cannot actually
+    make — LinkedIn has no nationality field — and a recruiter needs to see the
+    reasoning rather than a silent pass.
+    """
+    if not criteria.nationality:
+        return []
+    signal = nationality_mod.assess(profile, criteria.nationality)
+    if signal.unknown:
+        # Said plainly, because this candidate has *not* been checked and the
+        # recruiter would otherwise assume a filtered list means a verified one.
+        return [f"{criteria.nationality} nationality unverified — no education listed"]
+    return signal.evidence
+
+
 def score_candidate(
     profile: RawProfile,
     criteria: SearchCriteria,
@@ -193,7 +211,7 @@ def score_candidate(
         breakdown=breakdown,
         matched_keywords=keyword_match.matched,
         missing_keywords=keyword_match.missing,
-        reasons=_reasons(
+        reasons=_nationality_evidence(profile, criteria) + _reasons(
             title=s_title,
             keyword_match=keyword_match,
             total_years=total_years,
