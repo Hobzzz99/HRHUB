@@ -37,6 +37,48 @@ _MESSAGE = (
 )
 
 
+#: How long a stop request may go unacknowledged before it is applied anyway.
+#: A live worker checks every second, so anything beyond this means nobody is
+#: listening — the run died and left the row behind, which is precisely when a
+#: recruiter is most likely to be pressing Stop.
+_CANCEL_GRACE_S = 90
+
+
+def apply_unacknowledged_cancels(db: Session) -> int:
+    """Force through stop requests no worker ever acted on. Returns how many.
+
+    `request_cancel` sets a flag and trusts a worker to notice. When the worker
+    has died — a closed laptop, a restarted machine — there is nobody to notice,
+    and the search sits at "Stopping…" indefinitely. That is the same class of
+    fault as a search stuck at "running", and it needs the same answer: the row
+    must reach a state that says what happened.
+
+    Anything the dead run had already stored is kept and still shown.
+    """
+    cutoff = datetime.now(UTC) - timedelta(seconds=_CANCEL_GRACE_S)
+
+    orphaned = db.scalars(
+        select(Search).where(
+            Search.status == SearchStatus.RUNNING,
+            Search.cancel_requested.is_(True),
+            Search.updated_at < cutoff,
+        )
+    ).all()
+
+    for search in orphaned:
+        logger.warning(
+            "cancel_applied_without_worker",
+            search_id=str(search.id),
+            last_update=search.updated_at.isoformat(),
+        )
+        search.status = SearchStatus.CANCELLED
+        search.completed_at = datetime.now(UTC)
+
+    if orphaned:
+        db.commit()
+    return len(orphaned)
+
+
 def sweep(db: Session, *, older_than_s: int | None = None) -> int:
     """Mark long-abandoned `running` searches as failed. Returns how many.
 

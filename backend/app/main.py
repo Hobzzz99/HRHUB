@@ -17,14 +17,14 @@ from app.services import retention, stale_searches
 
 logger = get_logger(__name__)
 
-#: How often to look for searches whose worker died. Frequent enough that a
-#: recruiter is not left watching a dead progress bar for long, rare enough to
-#: be invisible — the query is a single indexed lookup on `status`.
-_SWEEP_INTERVAL_S = 300
+#: How often to look for searches whose worker died, and for stop requests
+#: nobody acted on. A minute, because the second of those is a recruiter
+#: watching the screen — and the query is a single indexed lookup on `status`.
+_SWEEP_INTERVAL_S = 60
 
 #: Retention runs every 12th sweep — roughly hourly. It scans every candidate
 #: row, and nothing about it is time-critical.
-_RETENTION_EVERY_N_SWEEPS = 12
+_RETENTION_EVERY_N_SWEEPS = 60
 
 
 @asynccontextmanager
@@ -41,7 +41,13 @@ async def lifespan(_: FastAPI):
         while True:
             try:
                 with session_scope() as db:
+                    # Stop requests first: a recruiter waiting on "Stopping…"
+                    # is watching the screen, unlike one whose search quietly
+                    # died an hour ago.
+                    forced = stale_searches.apply_unacknowledged_cancels(db)
                     reaped = stale_searches.sweep(db)
+                if forced:
+                    logger.warning("cancels_applied_without_worker", count=forced)
                 if reaped:
                     logger.warning("stale_searches_reaped", count=reaped)
             except Exception:  # noqa: BLE001 — a bad sweep must not stop the API

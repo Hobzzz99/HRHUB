@@ -197,3 +197,76 @@ class TestStoppingMidProfile:
             assert "session gone" in str(exc)
         else:
             raise AssertionError("the provider error was swallowed")
+
+
+class TestStoppingARunNobodyIsWorkingOn:
+    """The case that made Stop look broken.
+
+    A search whose worker died — a closed laptop, a restarted machine — is left
+    saying "running". Pressing Stop set a flag for a worker that no longer
+    existed, so the button said "Stopping…" indefinitely and nothing ever
+    happened. A run in that state has to reach a terminal status by itself.
+    """
+
+    def test_a_stale_running_search_is_cancelled_at_once(self):
+        from datetime import UTC, datetime, timedelta
+
+        db = SessionLocal()
+        try:
+            search = _search(db, status=SearchStatus.RUNNING)
+            search.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+            db.commit()
+
+            result = search_service.request_cancel(db, USER_ID, search.id)
+            assert result is not None
+            assert result.status == SearchStatus.CANCELLED
+            assert "no longer running" in (result.error or "")
+        finally:
+            db.close()
+
+    def test_a_live_search_is_still_only_asked(self):
+        """A worker that is working must be left to stop itself cleanly."""
+        db = SessionLocal()
+        try:
+            search = _search(db, status=SearchStatus.RUNNING)  # updated just now
+            result = search_service.request_cancel(db, USER_ID, search.id)
+
+            assert result is not None
+            assert result.status == SearchStatus.RUNNING
+            assert result.cancel_requested is True
+        finally:
+            db.close()
+
+    def test_the_sweep_applies_a_request_nobody_acted_on(self):
+        """For the worker that dies in the seconds after Stop is pressed."""
+        from datetime import UTC, datetime, timedelta
+
+        from app.services import stale_searches
+
+        db = SessionLocal()
+        try:
+            search = _search(db, status=SearchStatus.RUNNING)
+            search.cancel_requested = True
+            search.updated_at = datetime.now(UTC) - timedelta(minutes=5)
+            db.commit()
+
+            assert stale_searches.apply_unacknowledged_cancels(db) == 1
+            db.refresh(search)
+            assert search.status == SearchStatus.CANCELLED
+        finally:
+            db.close()
+
+    def test_the_sweep_leaves_a_working_search_alone(self):
+        from app.services import stale_searches
+
+        db = SessionLocal()
+        try:
+            search = _search(db, status=SearchStatus.RUNNING)
+            search.cancel_requested = True
+            db.commit()  # updated_at is now, so a worker is plainly alive
+
+            assert stale_searches.apply_unacknowledged_cancels(db) == 0
+            db.refresh(search)
+            assert search.status == SearchStatus.RUNNING
+        finally:
+            db.close()

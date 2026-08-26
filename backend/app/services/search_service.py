@@ -110,6 +110,19 @@ def get_results(db: Session, search_id: uuid.UUID) -> list[SearchResult]:
 
 
 
+#: A running search that has not written progress for this long is not being
+#: worked on. Generous enough to cover a slow profile and a rate-limit wait,
+#: short enough that a recruiter pressing Stop on a dead run gets an answer.
+_ABANDONED_AFTER_S = 90
+
+
+def _looks_abandoned(search: Search) -> bool:
+    last = search.updated_at
+    if last.tzinfo is None:  # SQLite hands back naive datetimes
+        last = last.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - last).total_seconds() > _ABANDONED_AFTER_S
+
+
 def request_cancel(db: Session, user_id: str, search_id: uuid.UUID) -> Search | None:
     """Ask a search to stop. Returns the search, or None if it is not theirs.
 
@@ -129,6 +142,17 @@ def request_cancel(db: Session, user_id: str, search_id: uuid.UUID) -> Search | 
         search.status = SearchStatus.CANCELLED
         search.completed_at = datetime.now(UTC)
         search.error = "Cancelled before it started. No profiles were opened."
+    elif _looks_abandoned(search):
+        # Nobody is going to read the flag. A live worker writes progress after
+        # every profile and checks for a stop every second, so a row this stale
+        # belongs to a run that died — a closed laptop, a restarted machine —
+        # and setting a flag would leave the recruiter at "Stopping…" for ever.
+        search.status = SearchStatus.CANCELLED
+        search.completed_at = datetime.now(UTC)
+        search.error = (
+            "Stopped. This search was no longer running — the machine working "
+            "on it went away. Anything it had already collected is kept."
+        )
     else:
         search.cancel_requested = True
     db.commit()
