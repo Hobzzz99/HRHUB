@@ -218,6 +218,29 @@ def title_score(required_title: str, profile: RawProfile) -> float:
     return domain * seniority * depth
 
 
+def role_is_in_field(required_title: str, keywords: list[str], item) -> bool:
+    """Does this one role count towards "N years in this field"?
+
+    The field is what the recruiter named. Keywords win when they were given —
+    a search titled *audit manager* with the keyword *external audit* is asking
+    about external audit, and the title is only how the job happens to be
+    labelled. With no keywords, the job title's own domain is the subject.
+
+    Judged on the role's title and employer, never on the profile as a whole:
+    the question is which *years* count, so it has to be answered per role.
+    """
+    wanted: set[str] = set()
+    for term in keywords or []:
+        wanted |= split(term)[0]
+    if not wanted:
+        wanted = split(required_title)[0]
+    if not wanted:
+        return True  # nothing was specified, so every role counts
+
+    available = _tokens(" ".join(filter(None, (item.title, item.company))))
+    return all(_matches(token, available) for token in wanted)
+
+
 def missing_domain_words(required_title: str, profile: RawProfile) -> list[str]:
     """The role's domain words with no support anywhere in the career."""
     domain, _ = split(required_title)

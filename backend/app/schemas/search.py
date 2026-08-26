@@ -16,6 +16,7 @@ class SearchCreate(BaseModel):
     location: str | None = None
     min_experience: float = Field(default=0.0, ge=0)
     require_title_match: bool = True
+    experience_in_field: bool = True
     graduation_year_from: int | None = Field(default=None, ge=1950, le=2100)
     graduation_year_to: int | None = Field(default=None, ge=1950, le=2100)
     keywords: list[str] = Field(default_factory=list)
@@ -46,6 +47,7 @@ class SearchRead(BaseModel):
     location: str | None
     min_experience: float
     require_title_match: bool
+    experience_in_field: bool
     graduation_year_from: int | None
     graduation_year_to: int | None
     keywords: list[str]

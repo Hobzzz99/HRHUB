@@ -9,6 +9,7 @@ jobs held at the same time.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 
 from app.domain.models import ExperienceItem
@@ -90,6 +91,43 @@ def compute_total_experience_years(
     experiences: list[ExperienceItem], *, today: date | None = None
 ) -> float:
     """Total years of professional experience, merging overlaps and skipping gaps."""
+    return _years(experiences, today=today)
+
+
+def compute_relevant_experience_years(
+    experiences: list[ExperienceItem],
+    matches: Callable[[ExperienceItem], bool],
+    *,
+    today: date | None = None,
+) -> float:
+    """Years spent in the roles that count, rather than years alive in a career.
+
+    "Ten years of external audit" and "ten years of anything, plus the words
+    external audit somewhere" are very different requirements, and only the
+    second was being measured. A finance director who audited for two years a
+    decade ago satisfied the first reading of a 10-year bar; the audit manager
+    with eight solid years did not.
+
+    Overlaps are merged the same way, so someone holding two audit roles at once
+    is credited with the calendar time, not twice over.
+    """
+    return _years([item for item in experiences if matches(item)], today=today)
+
+
+def has_dated_roles(
+    experiences: list[ExperienceItem], *, today: date | None = None
+) -> bool:
+    """Whether any role carries dates we can read.
+
+    Without this, "years in the field" is indistinguishable from "no years in
+    the field", and a profile whose dates failed to extract would be rejected
+    for a requirement it may well meet.
+    """
+    today = today or date.today()
+    return any(parse_range(item, today=today) is not None for item in experiences)
+
+
+def _years(experiences: list[ExperienceItem], *, today: date | None = None) -> float:
     today = today or date.today()
     intervals = [
         interval

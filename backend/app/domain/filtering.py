@@ -61,9 +61,16 @@ def apply_filters(
     reasons: list[str] = []
 
     # Years of experience below the minimum required.
-    if criteria.min_experience > 0 and scored.total_experience_years < criteria.min_experience:
+    # Measured against the field, not the whole career: "ten years of external
+    # audit" is not "ten years of anything by someone who once audited".
+    if criteria.min_experience > 0 and scored.relevant_experience_years < criteria.min_experience:
+        in_field = (
+            " in this field"
+            if scored.relevant_experience_years != scored.total_experience_years
+            else ""
+        )
         reasons.append(
-            f"Only {scored.total_experience_years:g} yrs experience "
+            f"Only {scored.relevant_experience_years:g} yrs experience{in_field} "
             f"(< {criteria.min_experience:g} required)"
         )
 

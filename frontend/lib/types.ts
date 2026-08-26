@@ -58,6 +58,7 @@ export interface Search {
   location: string | null;
   min_experience: number;
   require_title_match?: boolean;
+  experience_in_field?: boolean;
   graduation_year_from?: number | null;
   graduation_year_to?: number | null;
   keywords: string[];
@@ -180,6 +181,7 @@ export interface SearchCreateInput {
   location?: string | null;
   min_experience: number;
   require_title_match?: boolean;
+  experience_in_field?: boolean;
   graduation_year_from?: number | null;
   graduation_year_to?: number | null;
   keywords: string[];

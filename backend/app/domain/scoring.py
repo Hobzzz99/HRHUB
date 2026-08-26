@@ -71,6 +71,7 @@ def _reasons(
     title: float,
     keyword_match: keywords_mod.KeywordMatch,
     total_years: float,
+    relevant_years: float,
     criteria: SearchCriteria,
     location: float,
 ) -> list[str]:
@@ -80,9 +81,11 @@ def _reasons(
     elif title >= 0.4:
         reasons.append("Job title partially matches")
 
-    if criteria.min_experience > 0 and total_years >= criteria.min_experience:
+    if criteria.min_experience > 0 and relevant_years >= criteria.min_experience:
+        field = " in this field" if relevant_years != total_years else ""
         reasons.append(
-            f"{total_years:g} years experience (meets {criteria.min_experience:g} required)"
+            f"{relevant_years:g} years experience{field} "
+            f"(meets {criteria.min_experience:g} required)"
         )
     elif total_years > 0:
         reasons.append(f"{total_years:g} years experience")
@@ -140,11 +143,31 @@ def score_candidate(
     if total_years is None:
         total_years = experience_mod.compute_total_experience_years(profile.experience)
 
+    # What the experience bar is measured against. Counting a whole career let a
+    # finance director who audited briefly a decade ago clear a ten-year audit
+    # requirement, while an audit manager with eight solid years did not.
+    years_for_bar = total_years
+    if (
+        criteria.experience_in_field
+        and criteria.min_experience > 0
+        # Only when the dates can actually be read. A profile whose roles carry
+        # no parseable dates would otherwise measure zero years in the field and
+        # be rejected for it — punishing someone for how LinkedIn rendered their
+        # page rather than for their career.
+        and experience_mod.has_dated_roles(profile.experience)
+    ):
+        years_for_bar = experience_mod.compute_relevant_experience_years(
+            profile.experience,
+            lambda item: job_titles_mod.role_is_in_field(
+                criteria.job_title, criteria.keywords, item
+            ),
+        )
+
     keyword_match = keywords_mod.match_keywords_in_profile(criteria.keywords, profile)
 
     s_title = job_titles_mod.title_score(criteria.job_title, profile)
     s_keywords = keyword_match.ratio
-    s_experience = experience_score(total_years, criteria.min_experience)
+    s_experience = experience_score(years_for_bar, criteria.min_experience)
     s_location = location_score(criteria.location, profile.location)
 
     total = _weighted_total(
@@ -174,8 +197,10 @@ def score_candidate(
             title=s_title,
             keyword_match=keyword_match,
             total_years=total_years,
+            relevant_years=years_for_bar,
             criteria=criteria,
             location=s_location,
         ),
         total_experience_years=total_years,
+        relevant_experience_years=years_for_bar,
     )

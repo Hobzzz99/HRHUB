@@ -67,6 +67,11 @@ class SearchCriteria(BaseModel):
     critical_skills: list[str] = Field(default_factory=list)
     location: str | None = None
     min_experience: float = 0.0
+    #: Count only the years spent in the field being searched for, rather than
+    #: every year of a career. "Ten years of external audit" and "ten years of
+    #: anything, plus the words external audit somewhere" are different
+    #: requirements, and recruiters mean the first.
+    experience_in_field: bool = True
     #: Career-stage window, expressed the way it appears on a profile. Tested
     #: against the candidate's *earliest* graduation — see domain/education.py.
     #: Discard anyone whose career shows no evidence of the job title's
@@ -114,6 +119,10 @@ class ScoredCandidate(BaseModel):
     missing_keywords: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
     total_experience_years: float = 0.0
+    #: Years spent in the field actually being searched for. Equal to
+    #: total_experience_years when the recruiter set no experience bar or asked
+    #: for the whole career to count.
+    relevant_experience_years: float = 0.0
 
 
 class FilterDecision(BaseModel):

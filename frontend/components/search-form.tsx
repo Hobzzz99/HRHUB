@@ -48,6 +48,7 @@ const schema = z.object({
   location: z.string(),
   min_experience: z.coerce.number().min(0).max(50),
   require_title_match: z.boolean(),
+  experience_in_field: z.boolean(),
   graduation_year_from: z.string(),
   graduation_year_to: z.string(),
   companies: z.array(z.string()),
@@ -69,6 +70,7 @@ const defaults: FormValues = {
   location: "",
   min_experience: 0,
   require_title_match: true,
+  experience_in_field: true,
   graduation_year_from: "",
   graduation_year_to: "",
   companies: [],
@@ -242,6 +244,26 @@ export function SearchForm() {
               />
             </Field>
           </div>
+
+          <Controller
+            control={control}
+            name="experience_in_field"
+            render={({ field }) => (
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3">
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                <span className="space-y-0.5">
+                  <span className="block text-sm font-medium">
+                    Count only years in this field
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {field.value
+                      ? "“10 years” means 10 years doing this work — counted from the roles that match your keywords, or your job title if you left them blank. A CEO with 35 years and no audit does not qualify for 10 years of audit."
+                      : "“10 years” means 10 years of any work at all. Use this only when seniority matters more than the specific field."}
+                  </span>
+                </span>
+              </label>
+            )}
+          />
 
           <Field
             label="Current company (optional)"
