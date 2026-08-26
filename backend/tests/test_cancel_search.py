@@ -132,3 +132,68 @@ class TestTheProviderNoticesToo:
         from app.providers.mock import MockProvider
 
         assert MockProvider().cancel_requested() is False
+
+
+class TestStoppingMidProfile:
+    """Stop must mean stop, not "stop at the next convenient boundary".
+
+    Fetching a profile is a single long await — a browser navigating, scrolling
+    and reading — so a check that only ran between profiles left a recruiter
+    watching a search they had already stopped.
+    """
+
+    def test_a_long_fetch_is_abandoned_when_stopped(self):
+        import asyncio
+
+        from app.services.search_runner import _run_until_stopped
+
+        started = asyncio.Event()
+
+        async def slow_profile():
+            started.set()
+            await asyncio.sleep(30)  # far longer than the test would ever wait
+            return "finished"
+
+        async def scenario():
+            stop = False
+
+            async def press_stop_once_it_has_begun():
+                await started.wait()
+                nonlocal stop
+                stop = True
+
+            asyncio.create_task(press_stop_once_it_has_begun())
+            return await _run_until_stopped(slow_profile(), lambda: stop)
+
+        assert asyncio.run(asyncio.wait_for(scenario(), timeout=10)) is True
+
+    def test_a_profile_that_finishes_first_is_not_abandoned(self):
+        import asyncio
+
+        from app.services.search_runner import _run_until_stopped
+
+        async def quick_profile():
+            return "finished"
+
+        assert asyncio.run(_run_until_stopped(quick_profile(), lambda: False)) is False
+
+    def test_the_real_error_still_reaches_the_caller(self):
+        """Every existing handler — rate limit, restriction, provider error —
+        depends on the exception propagating out of the fetch."""
+        import asyncio
+
+        from app.providers.base import ProviderError
+        from app.services.search_runner import _run_until_stopped
+
+        async def failing_profile():
+            raise ProviderError("session gone")
+
+        async def scenario():
+            return await _run_until_stopped(failing_profile(), lambda: False)
+
+        try:
+            asyncio.run(scenario())
+        except ProviderError as exc:
+            assert "session gone" in str(exc)
+        else:
+            raise AssertionError("the provider error was swallowed")

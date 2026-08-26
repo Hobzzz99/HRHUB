@@ -7,8 +7,10 @@ SSE status stream reflects live state.
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -202,6 +204,64 @@ class _Collection:
         self.rejections: list[str] = []
 
 
+#: How often a profile in flight is checked against the stop button. Short
+#: enough to feel immediate; the check is one indexed row read.
+_CANCEL_POLL_S = 1.0
+
+
+def _stop_here(
+    db: Session, search: Search, run: _Collection, *, mid_profile: bool = False
+) -> None:
+    """Record that the recruiter stopped the run, keeping what it collected."""
+    logger.info(
+        "search_cancelled_by_user",
+        search_id=str(search.id),
+        processed=run.processed,
+        kept=len(run.kept),
+        mid_profile=mid_profile,
+    )
+    run.cancelled = True
+    note = "Stopped. Everything collected before you stopped it is kept."
+    if mid_profile:
+        note += (
+            " The profile being opened at the time was abandoned, and its slot"
+            " of the hourly budget is spent."
+        )
+    _set_progress(
+        db,
+        search,
+        processed=run.processed,
+        kept=len(run.kept),
+        note=note,
+    )
+
+
+async def _run_until_stopped(coro, stopped) -> bool:
+    """Await ``coro``, abandoning it if the recruiter presses Stop. True if abandoned.
+
+    Fetching a profile is a single long await — a browser navigating, scrolling
+    and reading a page — so without this the earliest a stop could be noticed was
+    after it finished.
+
+    Abandoning does cost the budget slot: it is charged before the page is
+    opened, so the profile is paid for and then thrown away. That is the
+    recruiter's trade to make, and they have made it: a search started by
+    misclicking Enter should stop when they say so, not when it reaches a
+    convenient boundary.
+    """
+    task = asyncio.create_task(coro)
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=_CANCEL_POLL_S)
+        if done:
+            await task  # re-raise whatever it raised, so callers still see it
+            return False
+        if stopped():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+            return True
+
+
 def _record_failure(db: Session, search: Search, run: _Collection, error: str) -> bool:
     """Note a profile that could not be read. True when the run should stop.
 
@@ -333,25 +393,21 @@ async def _collect(
         )
 
         for hit in to_process:
-            # Between profiles, never mid-profile: this profile has already been
-            # charged to the hourly budget, so abandoning it now would waste a
-            # slot that takes an hour to come back.
-            db.refresh(search)
-            if search.cancel_requested:
-                logger.info("search_cancelled_by_user", search_id=str(search.id))
-                run.cancelled = True
-                _set_progress(
-                    db,
-                    search,
-                    processed=run.processed,
-                    kept=len(run.kept),
-                    note="Cancelled. Everything collected before you stopped it is kept.",
-                )
+            if stopped():
+                _stop_here(db, search, run)
                 return
 
             run.processed += 1
             try:
-                await _score_one(db, provider, hit, criteria, run)
+                abandoned = await _run_until_stopped(
+                    _score_one(db, provider, hit, criteria, run), stopped
+                )
+                if abandoned:
+                    # This profile was paid for and thrown away. Say so, rather
+                    # than letting the budget appear to have gone missing.
+                    run.processed -= 1
+                    _stop_here(db, search, run, mid_profile=True)
+                    return
             except RateLimitExceeded as exc:
                 # The hourly scrape budget is spent. Stop cleanly and keep what
                 # we already have — a partial result set is far more useful than
