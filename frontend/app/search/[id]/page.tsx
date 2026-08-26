@@ -3,7 +3,14 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Clock, Download, Frown, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock,
+  Download,
+  Frown,
+  Users,
+  XCircle,
+} from "lucide-react";
 
 import { api } from "@/lib/api";
 import { queryKeys, useSaved, useSearchResults } from "@/lib/queries";
@@ -28,8 +35,13 @@ export default function SearchResultsPage() {
   });
   const stream = useSearchStream(id, metaQuery.data?.status ?? "queued");
   const completed = stream.status === "completed";
+  const cancelled = stream.status === "cancelled";
+  // A stopped search keeps everything it collected before stopping — the whole
+  // point of stopping between profiles rather than killing the worker. Those
+  // profiles cost budget, so they are shown.
+  const hasFinished = completed || cancelled;
 
-  const resultsQuery = useSearchResults(id, completed);
+  const resultsQuery = useSearchResults(id, hasFinished);
   const savedQuery = useSaved();
   const savedIds = new Set((savedQuery.data ?? []).map((s) => s.candidate.id));
 
@@ -46,6 +58,19 @@ export default function SearchResultsPage() {
     rejected && reasons?.length
       ? `${rejected} ${rejected === 1 ? "profile was" : "profiles were"} reviewed and filtered out — ${reasons.join(", ")}.`
       : null;
+
+  // Enter submits the form, so a half-filled search starts on a misclick and
+  // then spends real budget for minutes. This is the way out of that.
+  const inFlight = stream.status === "queued" || stream.status === "running";
+  const [cancelling, setCancelling] = React.useState(false);
+  const onCancel = async () => {
+    setCancelling(true);
+    try {
+      await api.cancelSearch(id);
+    } catch {
+      setCancelling(false);
+    }
+  };
 
   const [exporting, setExporting] = React.useState(false);
   const [exportError, setExportError] = React.useState<string | null>(null);
@@ -80,12 +105,20 @@ export default function SearchResultsPage() {
             <Skeleton className="h-8 w-56" />
           )}
         </div>
-        {completed && (resultsQuery.data?.length ?? 0) > 0 ? (
-          <Button variant="outline" onClick={onExport} disabled={exporting}>
-            <Download className="size-4" />
-            {exporting ? "Exporting…" : "Export CSV"}
-          </Button>
-        ) : null}
+        <div className="flex gap-2">
+          {inFlight ? (
+            <Button variant="outline" onClick={onCancel} disabled={cancelling}>
+              <XCircle className="size-4" />
+              {cancelling ? "Stopping…" : "Stop search"}
+            </Button>
+          ) : null}
+          {hasFinished && (resultsQuery.data?.length ?? 0) > 0 ? (
+            <Button variant="outline" onClick={onExport} disabled={exporting}>
+              <Download className="size-4" />
+              {exporting ? "Exporting…" : "Export CSV"}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {exportError ? (
@@ -112,7 +145,7 @@ export default function SearchResultsPage() {
           way it was asked to be looks entirely convincing on its own. */}
       <DegradedNotice reasons={degraded} />
 
-      {completed ? (
+      {hasFinished ? (
         resultsQuery.isLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -140,6 +173,12 @@ export default function SearchResultsPage() {
               ))}
             </div>
           </>
+        ) : cancelled ? (
+          <EmptyState
+            icon={XCircle}
+            title="Search stopped"
+            description="You stopped this search before anything was collected. No further budget was spent."
+          />
         ) : stream.progress.rate_limited ? (
           // Zero results because the run was cut short, not because nothing fit.
           // Telling the recruiter to loosen their criteria here would send them

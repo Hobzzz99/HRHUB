@@ -14,10 +14,17 @@ class SearchStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    #: Stopped on purpose by the recruiter. Distinct from FAILED: nothing went
+    #: wrong, and whatever had been collected is kept and shown.
+    CANCELLED = "cancelled"
 
     @property
     def is_terminal(self) -> bool:
-        return self in (SearchStatus.COMPLETED, SearchStatus.FAILED)
+        return self in (
+            SearchStatus.COMPLETED,
+            SearchStatus.FAILED,
+            SearchStatus.CANCELLED,
+        )
 
 
 class CandidateSource(StrEnum):

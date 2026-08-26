@@ -1,6 +1,12 @@
 // API response types — mirror of the backend Pydantic schemas.
 
-export type SearchStatus = "queued" | "running" | "completed" | "failed";
+export type SearchStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  /** Stopped on purpose. Not a failure — whatever was collected is kept. */
+  | "cancelled";
 
 export interface SearchProgress {
   found?: number;

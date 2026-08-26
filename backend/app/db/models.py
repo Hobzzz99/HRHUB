@@ -151,6 +151,10 @@ class Search(Base, TimestampMixin):
     #: Its absence is the reason a broken scraper and a genuinely empty market
     #: were shown to recruiters as the same sentence.
     degraded_reasons: Mapped[list | None] = mapped_column(JSON)
+    #: Set when the recruiter asks a running search to stop. The worker sees it
+    #: between profiles and stops cleanly rather than being killed, so the
+    #: profiles it has already paid budget for are kept.
+    cancel_requested: Mapped[bool] = mapped_column(default=False, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="searches")

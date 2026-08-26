@@ -96,9 +96,13 @@ async def execute_search(search_id: uuid.UUID) -> None:
         criteria = search_service.criteria_from_search(search)
 
         try:
-            await _run_pipeline(db, search, criteria)
-            search.status = SearchStatus.COMPLETED
+            cancelled = await _run_pipeline(db, search, criteria)
+            search.status = (
+                SearchStatus.CANCELLED if cancelled else SearchStatus.COMPLETED
+            )
             search.completed_at = datetime.now(UTC)
+            # Cancelling is not an error, so `error` stays empty — the note in
+            # progress explains it, and the results collected so far are shown.
             search.error = None
         except AccountRestrictedError as exc:
             # The one place a restriction is recorded, so every route into it —
@@ -189,6 +193,8 @@ class _Collection:
         self.consecutive_failures = 0
         self.processed = 0
         self.restricted: AccountRestrictedError | None = None
+        #: The recruiter stopped it. Not a failure, and the partial results stand.
+        self.cancelled = False
         #: Reasons the results answer a different question than the one asked.
         self.degradations: list[tuple[str, str]] = []
         #: Why filtered-out candidates were filtered out, so an empty shortlist
@@ -301,6 +307,22 @@ async def _collect(
         )
 
         for hit in to_process:
+            # Between profiles, never mid-profile: this profile has already been
+            # charged to the hourly budget, so abandoning it now would waste a
+            # slot that takes an hour to come back.
+            db.refresh(search)
+            if search.cancel_requested:
+                logger.info("search_cancelled_by_user", search_id=str(search.id))
+                run.cancelled = True
+                _set_progress(
+                    db,
+                    search,
+                    processed=run.processed,
+                    kept=len(run.kept),
+                    note="Cancelled. Everything collected before you stopped it is kept.",
+                )
+                return
+
             run.processed += 1
             try:
                 await _score_one(db, provider, hit, criteria, run)
@@ -368,7 +390,8 @@ async def _collect(
             )
 
 
-async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -> None:
+async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -> bool:
+    """Run the search. Returns True when the recruiter stopped it part-way."""
     # Wall-clock, because that is the number the recruiter experiences: it
     # includes the browser waiting on LinkedIn, not just our own work.
     started = time.monotonic()
@@ -419,6 +442,8 @@ async def _run_pipeline(db: Session, search: Search, criteria: SearchCriteria) -
     # cost the operator the rest of the run, not the profiles already paid for.
     if run.restricted is not None:
         raise run.restricted
+
+    return run.cancelled
 
 
 def _top_rejections(reasons: list[str], limit: int = 4) -> list[str] | None:

@@ -22,7 +22,8 @@ export interface StreamState {
   unreachable: boolean;
 }
 
-const isTerminal = (s: SearchStatus) => s === "completed" || s === "failed";
+const isTerminal = (s: SearchStatus) =>
+  s === "completed" || s === "failed" || s === "cancelled";
 
 /** ~6 seconds of failed polls before we say so. Long enough to ride out a
  *  redeploy, short enough that nobody watches a dead spinner. */

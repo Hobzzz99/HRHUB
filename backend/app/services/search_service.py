@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -106,6 +107,33 @@ def get_results(db: Session, search_id: uuid.UUID) -> list[SearchResult]:
         .options(selectinload(SearchResult.candidate))
         .order_by(SearchResult.rank.asc(), SearchResult.match_score.desc())
     ).all()
+
+
+
+def request_cancel(db: Session, user_id: str, search_id: uuid.UUID) -> Search | None:
+    """Ask a search to stop. Returns the search, or None if it is not theirs.
+
+    A queued search has not started, so it stops here and now. A running one is
+    only *asked*: the worker is on the recruiter's own laptop and checks between
+    profiles, which lets it keep everything it has already spent budget on
+    rather than being killed mid-profile.
+
+    Already-finished searches are left exactly as they are — cancelling one
+    would rewrite a result the recruiter may be reading.
+    """
+    search = get_search(db, user_id, search_id)
+    if search is None or SearchStatus(search.status).is_terminal:
+        return search
+
+    if search.status == SearchStatus.QUEUED:
+        search.status = SearchStatus.CANCELLED
+        search.completed_at = datetime.now(UTC)
+        search.error = "Cancelled before it started. No profiles were opened."
+    else:
+        search.cancel_requested = True
+    db.commit()
+    db.refresh(search)
+    return search
 
 
 # --- Candidates / saved -----------------------------------------------------

@@ -46,6 +46,28 @@ def create_search(
     return search_service.to_search_read(db, search)
 
 
+@router.post("/{search_id}/cancel", response_model=SearchRead)
+def cancel_search(
+    search_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_authed_user),
+) -> SearchRead:
+    """Stop a search the recruiter did not mean to start.
+
+    Enter submits the form, so a half-filled search begins on a misclick and
+    then spends real budget against a real LinkedIn account for minutes.
+
+    A queued search stops at once. A running one is asked to stop and does so
+    between profiles — the profile in flight has already been charged to the
+    hourly budget, and abandoning it mid-way would waste a slot that takes an
+    hour to come back.
+    """
+    search = search_service.request_cancel(db, user.id, search_id)
+    if search is None:
+        raise HTTPException(status_code=404, detail="Search not found")
+    return search_service.to_search_read(db, search)
+
+
 @router.get("", response_model=list[SearchRead])
 def list_searches(
     limit: int = Query(20, ge=1, le=100),

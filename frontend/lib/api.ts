@@ -53,6 +53,8 @@ export const api = {
   getSearch: (id: string) => request<Search>(`/search/${id}`),
   getResults: (id: string) => request<SearchResult[]>(`/search/${id}/results`),
   getCandidate: (id: string) => request<Candidate>(`/candidate/${id}`),
+  cancelSearch: (id: string) =>
+    request<Search>(`/search/${id}/cancel`, { method: "POST" }),
   listSaved: () => request<SavedCandidate[]>("/saved"),
   saveCandidate: (candidateId: string, notes?: string) =>
     request<SavedCandidate>("/candidate/save", {
