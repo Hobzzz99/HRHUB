@@ -154,10 +154,17 @@ export default function SearchResultsPage() {
           // list says nothing about the market. Telling the recruiter to
           // loosen their criteria here would send them rewriting a search that
           // was never the problem — which is exactly what used to happen.
+          //
+          // The rejection summary still goes underneath. When a location filter
+          // fails, "24 of 25 were outside the requested location" is what makes
+          // the cause obvious, and dropping it left the recruiter with the
+          // warning but not the evidence.
           <EmptyState
             icon={AlertTriangle}
             title="This search could not be completed properly"
-            description={degraded.map((d) => d.detail).join(" ")}
+            description={[...degraded.map((d) => d.detail), rejectionSummary]
+              .filter(Boolean)
+              .join(" ")}
           />
         ) : (
           <EmptyState
